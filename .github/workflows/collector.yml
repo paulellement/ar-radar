@@ -1,0 +1,30 @@
+# FALLBACK ONLY: use this if Databricks Free Edition can't reach ws.audioscrobbler.com.
+# Runs the same collector on GitHub's runners and uploads the day's files to the UC Volume.
+# Needs repo secrets: LASTFM_API_KEY, DATABRICKS_HOST, DATABRICKS_TOKEN.
+name: collector-fallback
+on:
+  # schedule:
+  #   - cron: "0 6 * * *"
+  workflow_dispatch:
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      VOLUME: dbfs:/Volumes/workspace/anr_bronze/landing
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - uses: databricks/setup-cli@main
+      - run: uv pip install -e .
+      # Pull the current pool so weekly rebuilds keep existing members.
+      - run: |
+          mkdir -p landing/candidates
+          databricks fs cp "$VOLUME/candidates/pool.jsonl" landing/candidates/pool.jsonl || true
+      - run: anr-snapshot --root landing
+      - run: databricks fs cp -r --overwrite landing "$VOLUME"

@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+.databricks/
+.env
+data/
+
+# private notes
+Starter_plan.md
+*.local.yml
