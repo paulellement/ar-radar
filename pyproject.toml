@@ -22,6 +22,7 @@ dev = [
 [project.scripts]
 anr-candidates = "anr_radar.collect.candidates:main"
 anr-snapshot = "anr_radar.collect.snapshot:main"
+anr-pipeline = "anr_radar.pipeline:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -42,3 +43,4 @@ select = ["E", "F", "I", "B", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
 "scripts/*.py" = ["E402", "E501"]  # Databricks notebook sources
+"src/anr_radar/transform/silver.py" = ["E501"]  # long SQL COMMENT strings
