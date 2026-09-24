@@ -1,0 +1,29 @@
+resources:
+  jobs:
+    collector:
+      name: anr-radar-collector
+      description: Daily Last.fm snapshot (rebuilds the candidate pool weekly). The history clock.
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?"  # 06:00 UTC daily
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      email_notifications:
+        on_failure:
+          - ${var.alert_email}
+      max_concurrent_runs: 1
+      timeout_seconds: 7200
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "3"
+            dependencies:
+              - ../dist/*.whl
+      tasks:
+        - task_key: snapshot
+          environment_key: default
+          max_retries: 1
+          min_retry_interval_millis: 600000
+          python_wheel_task:
+            package_name: anr_radar
+            entry_point: anr-snapshot
+            parameters: ["--root", "${var.landing_root}"]

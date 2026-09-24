@@ -1,0 +1,32 @@
+bundle:
+  name: anr_radar
+
+include:
+  - resources/*.yml
+  - "*.local.yml"  # personal overrides, git-ignored
+
+artifacts:
+  default:
+    type: whl
+    build: uv build --wheel
+    path: .
+
+variables:
+  landing_root:
+    description: Unity Catalog Volume path where raw JSONL snapshots land
+    default: /Volumes/workspace/anr_bronze/landing
+  alert_email:
+    description: Where job failure emails go
+    # set in databricks.local.yml (git-ignored) or with --var alert_email=...
+
+targets:
+  dev:
+    mode: development
+    default: true
+    # host comes from your ~/.databrickscfg profile (`databricks auth login`)
+
+  # The real, scheduled deployment. (dev mode pauses schedules and prefixes names.)
+  prod:
+    mode: production
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
