@@ -15,6 +15,12 @@ variables:
   landing_root:
     description: Unity Catalog Volume path where raw JSONL snapshots land
     default: /Volumes/workspace/anr_bronze/landing
+  catalog:
+    description: Unity Catalog catalog for all tables
+    default: workspace
+  schema_prefix:
+    description: Prefix for the bronze/silver/gold schemas (dev writes to separate schemas)
+    default: anr_
   alert_email:
     description: Where job failure emails go
     # set in databricks.local.yml (git-ignored) or with --var alert_email=...
@@ -23,6 +29,8 @@ targets:
   dev:
     mode: development
     default: true
+    variables:
+      schema_prefix: dev_anr_
     # host comes from your ~/.databrickscfg profile (`databricks auth login`)
 
   # The real, scheduled deployment. (dev mode pauses schedules and prefixes names.)

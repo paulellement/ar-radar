@@ -1,0 +1,41 @@
+resources:
+  jobs:
+    pipeline:
+      name: anr-radar-pipeline
+      description: Landing JSONL -> bronze -> silver -> gold, then data quality checks.
+      email_notifications:
+        on_failure:
+          - ${var.alert_email}
+      max_concurrent_runs: 1
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "3"
+            dependencies:
+              - ../dist/*.whl
+      tasks:
+        - task_key: bronze
+          environment_key: default
+          python_wheel_task: &step
+            package_name: anr_radar
+            entry_point: anr-pipeline
+            parameters: [bronze, --catalog, "${var.catalog}", --prefix, "${var.schema_prefix}",
+                         --landing-root, "${var.landing_root}"]
+        - task_key: silver
+          depends_on: [{task_key: bronze}]
+          environment_key: default
+          python_wheel_task:
+            <<: *step
+            parameters: [silver, --catalog, "${var.catalog}", --prefix, "${var.schema_prefix}"]
+        - task_key: gold
+          depends_on: [{task_key: silver}]
+          environment_key: default
+          python_wheel_task:
+            <<: *step
+            parameters: [gold, --catalog, "${var.catalog}", --prefix, "${var.schema_prefix}"]
+        - task_key: quality
+          depends_on: [{task_key: gold}]
+          environment_key: default
+          python_wheel_task:
+            <<: *step
+            parameters: [quality, --catalog, "${var.catalog}", --prefix, "${var.schema_prefix}"]
