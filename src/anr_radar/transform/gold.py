@@ -9,7 +9,7 @@ import math
 
 import pandas as pd
 
-from anr_radar.signals.scoring import compute_signals
+from anr_radar.signals.scoring import compute_signals, possible_alias
 from anr_radar.spark import set_comments
 from anr_radar.tables import Tables
 
@@ -42,6 +42,7 @@ SIGNALS_FIELDS = [
     ("stats_last_changed", "DATE"),
     ("on_tour", "BOOLEAN"),
     ("lastfm_url", "STRING"),
+    ("possible_alias_of", "STRING"),
 ]
 SIGNALS_SCHEMA = ", ".join(f"{name} {type_}" for name, type_ in SIGNALS_FIELDS)
 INT_TYPES = {"INT", "BIGINT"}
@@ -83,6 +84,10 @@ SIGNALS_COLUMNS = {
     "stats_last_changed": "Last day Last.fm refreshed this artist's stats (they are cached)",
     "on_tour": "Last.fm on-tour flag",
     "lastfm_url": "Artist page on Last.fm",
+    "possible_alias_of": (
+        "If set, this page is probably an established artist under a restyled name (e.g. "
+        "JAY-Z as JAŸ-Z): its growth is an artifact. Exclude these when looking for rising artists"
+    ),
 }
 
 
@@ -115,6 +120,9 @@ def prepare_signals(
     sig = sig.join(profile.set_index("artist_key"), how="left")
     sig["tags"] = sig.tags.apply(_as_list)
     sig["genres"] = sig.tags.apply(lambda v: ", ".join(v[:3]))
+    sig["possible_alias_of"] = [
+        possible_alias(n, _as_list(sim)) for n, sim in zip(sig.name, sig.similar_names, strict=True)
+    ]
     sig = sig.reset_index()
 
     for name, type_ in SIGNALS_FIELDS:
@@ -134,7 +142,7 @@ def build_signals(spark, t: Tables) -> dt.date:
         f"SELECT artist_key, snapshot_date, country FROM {t('silver', 'chart_daily')}"
     ).toPandas()
     profile = spark.sql(
-        f"SELECT artist_key, tags, on_tour, lastfm_url FROM {t('silver', 'artist_profile')}"
+        f"SELECT artist_key, tags, on_tour, lastfm_url, similar_names FROM {t('silver', 'artist_profile')}"
     ).toPandas()
 
     as_of, rows = prepare_signals(daily, charts, profile)

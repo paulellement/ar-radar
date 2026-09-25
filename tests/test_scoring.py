@@ -167,3 +167,16 @@ def test_unrefreshed_stats_are_missing_not_zero_growth():
 def test_last_change_date_skips_unchanged_days():
     h = history({"a": [(5, 100, 1000), (4, 110, 1100), (3, 110, 1100), (0, 110, 1100)]})
     assert scoring.last_change_date(h, AS_OF)["a"] == day(4)
+
+
+@pytest.mark.parametrize(
+    ("name", "similar", "expected"),
+    [
+        ("JAŸ-Z", ["JAY-Z", "Nas"], "JAY-Z"),
+        ("Beyonce", ["Beyoncé"], "Beyoncé"),
+        ("Jane Remover", ["Jane Doe", "Dltzk"], None),
+        ("X", None, None),
+    ],
+)
+def test_possible_alias(name, similar, expected):
+    assert scoring.possible_alias(name, similar) == expected

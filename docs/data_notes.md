@@ -55,3 +55,26 @@ days, including small rooms (Lee's Palace, The Garrison, Sneaky Dee's, The Drake
   *different* artist (horsegiirL vs Horsegirl at 94.7, Spoons vs Spoon, MARO vs Mario), and
   none was auto-matched. Hence the high auto threshold (95), exact-only matching for names
   under 5 characters, and never auto-matching tribute acts.
+
+## Scout briefs: model choice and what the LLM gets wrong (2026-09-25)
+
+Compared Llama 3.3 70B, gpt-oss-120b and Qwen3-Next 80B on identical fact-only prompts:
+all kept the format; Qwen misread "rank #103" as "top 103"; Llama was faithful but flat;
+gpt-oss gave the most useful detail and was chosen, with Llama as the retry model.
+
+- **Signing status matters most to A&R and no model surfaced it unprompted.** Florence
+  Road's bio says they signed to Warner Records; v1 briefs omitted it. Prompt v2 requires a
+  Signing status section that quotes the bio or says "not confirmed unsigned". It now
+  surfaces e.g. CHXRRY (XO Records) and Evan (BELIFT LAB).
+- **gpt-oss sometimes returns an empty completion** (2 of 20 in one run, 0 in another).
+  Failures are recorded in an `error` column and retried once with Llama 3.3.
+- **Each row stores its exact prompt**, so any claim can be checked against the facts given.
+  Remaining failure mode: light embellishment of tags (a single "ethiopian" tag became
+  "subtle Ethiopian vocal textures"). The app labels briefs as AI drafts.
+
+## Restyled names look like breakouts (2026-09-25)
+
+JAY-Z's new "JAŸ-Z" page (umlaut added for Reasonable Doubt's 30th anniversary) started
+from zero, so it ranked near the top. Artists whose normalized name equals one of their
+own similar artists are flagged `possible_alias_of` (9 found, e.g. Givēon/Giveon,
+Sinéad/Sinead Harnett, full-width "３８５") and excluded from briefs.

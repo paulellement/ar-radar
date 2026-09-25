@@ -118,6 +118,18 @@ def last_change_date(daily: pd.DataFrame, as_of: dt.date) -> pd.Series:
     return h[changed].groupby("artist_key").snapshot_date.max()
 
 
+def possible_alias(name: str, similar_names) -> str | None:
+    """A similar artist with the same name once accents/punctuation are stripped is almost
+    always the same act under a restyled name (e.g. "JAY-Z" -> "JAŸ-Z"). The new page looks
+    like explosive growth, so flag it."""
+    from anr_radar.matching.names import normalize
+
+    for other in similar_names if similar_names is not None else []:
+        if other != name and normalize(other) == normalize(name):
+            return other
+    return None
+
+
 def _pct(rate: pd.Series, days: int) -> pd.Series:
     return (np.exp(rate * days) - 1) * 100
 

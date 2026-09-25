@@ -46,3 +46,4 @@ select = ["E", "F", "I", "B", "UP"]
 "scripts/*.py" = ["E402", "E501"]  # Databricks notebook sources
 "src/anr_radar/transform/silver.py" = ["E501"]  # long SQL COMMENT strings
 "src/anr_radar/transform/gold.py" = ["E501"]
+"src/anr_radar/briefs/generate.py" = ["E501"]  # prompt text

@@ -1,0 +1,24 @@
+resources:
+  jobs:
+    briefs:
+      name: anr-radar-briefs
+      description: Weekly LLM scout briefs (ai_query) for the top breakout artists.
+      schedule:
+        quartz_cron_expression: "0 0 8 ? * MON"  # Mondays 08:00 UTC, after the daily run
+        timezone_id: UTC
+      email_notifications:
+        on_failure:
+          - ${var.alert_email}
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "3"
+            dependencies:
+              - ../dist/*.whl
+      tasks:
+        - task_key: briefs
+          environment_key: default
+          python_wheel_task:
+            package_name: anr_radar
+            entry_point: anr-pipeline
+            parameters: [briefs, --catalog, "${var.catalog}", --prefix, "${var.schema_prefix}"]

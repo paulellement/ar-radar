@@ -36,10 +36,16 @@ def fixture():
     profile = pd.DataFrame(
         [
             # toPandas() returns Spark arrays as numpy arrays
-            ("mbid:a", np.array(["indie pop", "bedroom pop", "pop", "rock"]), True, "u/a"),
-            ("name:b", np.array([]), False, "u/b"),
+            (
+                "mbid:a",
+                np.array(["indie pop", "bedroom pop", "pop", "rock"]),
+                True,
+                "u/a",
+                np.array(["ALPHA!", "Omega"]),
+            ),
+            ("name:b", np.array([]), False, "u/b", None),
         ],
-        columns=["artist_key", "tags", "on_tour", "lastfm_url"],
+        columns=["artist_key", "tags", "on_tour", "lastfm_url", "similar_names"],
     )  # name:c has no profile
     return daily, charts, profile
 
@@ -66,6 +72,8 @@ def test_row_contents():
     assert a["new_country_charts_14d"] == 1  # Brazil; Canada was there on the baseline day
     assert a["breakout_score"] is not None and a["is_provisional"] is True
     assert a["stats_last_changed"] == dt.date(2026, 9, 24)
+    assert a["possible_alias_of"] == "ALPHA!"
+    assert by_key["name:b"]["possible_alias_of"] is None
 
     assert by_key["name:b"]["breakout_score"] is None  # stale cache: no measurement
     assert by_key["name:b"]["tags"] == []
