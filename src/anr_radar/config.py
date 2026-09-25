@@ -96,3 +96,9 @@ TICKETMASTER_REQUESTS_PER_SEC = 4.0  # API limit is 5/s
 # Performers of upcoming local shows join the candidate pool outside MAX_POOL_SIZE, so the
 # Shows feature can score them. Capped separately.
 MAX_EVENT_ARTISTS = 2500
+
+# --- Scout briefs (LLM via Databricks ai_query) ------------------------------
+BRIEF_MODEL = "databricks-gpt-oss-120b"  # compared with Llama 3.3 70B and Qwen3-Next
+BRIEF_FALLBACK_MODEL = "databricks-meta-llama-3-3-70b-instruct"  # retries empty/failed briefs
+BRIEF_TOP_N = 50
+BRIEF_EXCLUDE_BANDS = ("2M+",)  # superstars don't need scouting
