@@ -18,6 +18,7 @@ DATASETS = {
     "lastfm_artist_info_raw": "lastfm/artist_info",
     "lastfm_geo_top_raw": "lastfm/geo_top",
     "lastfm_similar_raw": "lastfm/similar",
+    "tm_events_raw": "ticketmaster/events",
 }
 RELOAD_RECENT_DAYS = 2  # always reload the newest partitions in case a day was re-collected
 

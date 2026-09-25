@@ -24,9 +24,11 @@ What we changed:
   artists in the ranking).
 - `stats_last_changed` is recorded per artist so the refresh cadence can be measured.
 
-Open question: how often do small artists refresh? Check after ~7 days of snapshots
-(distribution of days between changes per size band). If some artists refresh less than
-weekly, widen the default window for them or rank on the 14-day window.
+**Update 2026-09-25:** between day 2 and day 3 (a full 24h apart), 99.7% of artists changed.
+So the cache refreshes roughly daily, and day 1 -> day 2 looked stale mostly because the
+first (manual) run was only ~12h before the first scheduled one. The "unchanged = missing"
+rule stays: it still covers artists that miss a refresh. Still worth re-checking the
+refresh distribution per size band after a week.
 
 ## The same artist can appear under two keys, with different cached numbers
 
@@ -36,3 +38,20 @@ Mixing the two keys produced a fake "+0.5% overnight" that ranked ADÉLA #1 in a
 local test. Silver keeps exactly one key per (name, day), deterministically (mbid keys first,
 then alphabetical), so each artist's history always comes from the same lookup. New pool
 additions are also deduplicated by name.
+
+## Ticketmaster: good small-room coverage, sparse prices, and most performers aren't charting
+
+First pull (2026-09-25): 706 upcoming music events in Toronto and 284 in Montréal over 90
+days, including small rooms (Lee's Palace, The Garrison, Sneaky Dee's, The Drake Hotel).
+
+- **Only 18% of Toronto performers were in the chart-seeded pool**, so performers of upcoming
+  shows are now added to the pool daily (their own cap: `MAX_EVENT_ARTISTS`). They get growth
+  scores after two snapshots.
+- **45% of performers carry a MusicBrainz ID** in `externalLinks`, so many matches are exact
+  by ID. 39% have a YouTube link, useful later for YouTube stats without `search.list`.
+- **Prices are sparse:** only ~12% of matched upcoming shows list a price range. The app must
+  treat "no listed price" as unknown, not free.
+- **Name matching:** every one of the 12 fuzzy "review" candidates on day one was a
+  *different* artist (horsegiirL vs Horsegirl at 94.7, Spoons vs Spoon, MARO vs Mario), and
+  none was auto-matched. Hence the high auto threshold (95), exact-only matching for names
+  under 5 characters, and never auto-matching tribute acts.

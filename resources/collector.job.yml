@@ -2,7 +2,9 @@ resources:
   jobs:
     collector:
       name: anr-radar-daily
-      description: Daily Last.fm snapshot (rebuilds the candidate pool weekly), then the medallion pipeline.
+      description: >-
+        Daily: upcoming Ticketmaster events, then the Last.fm snapshot (adds show performers to
+        the pool; rebuilds it weekly), then the medallion pipeline.
       schedule:
         quartz_cron_expression: "0 0 6 * * ?"  # 06:00 UTC daily
         timezone_id: UTC
@@ -18,7 +20,18 @@ resources:
             dependencies:
               - ../dist/*.whl
       tasks:
+        - task_key: events
+          environment_key: default
+          max_retries: 1
+          min_retry_interval_millis: 300000
+          python_wheel_task:
+            package_name: anr_radar
+            entry_point: anr-events
+            parameters: ["--root", "${var.landing_root}"]
         - task_key: snapshot
+          # A failed events pull must not cost a day of Last.fm history.
+          depends_on: [{task_key: events}]
+          run_if: ALL_DONE
           environment_key: default
           max_retries: 1
           min_retry_interval_millis: 600000

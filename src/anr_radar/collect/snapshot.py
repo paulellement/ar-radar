@@ -10,7 +10,14 @@ import logging
 
 from anr_radar import config
 from anr_radar.clients.lastfm import LastFmClient, LastFmError, NotFound
-from anr_radar.collect.candidates import build_pool, load_pool, pool_is_stale
+from anr_radar.collect import events
+from anr_radar.collect.candidates import (
+    add_event_performers,
+    build_pool,
+    load_pool,
+    pool_is_stale,
+    save_pool,
+)
 from anr_radar.keys import artist_key
 from anr_radar.secrets import get_secret
 from anr_radar.storage import partition_dir, write_jsonl
@@ -97,6 +104,12 @@ def run(
     if rebuild_pool or pool_is_stale(pool, today, config.POOL_MAX_AGE_DAYS):
         log.info("candidate pool missing or stale; rebuilding")
         pool = build_pool(client, root, today)
+    pool, n_added = add_event_performers(
+        pool, events.load_performers(root, snapshot_date), snapshot_date, config.MAX_EVENT_ARTISTS
+    )
+    if n_added:
+        save_pool(root, pool)
+        log.info("added %d performers of upcoming shows to the pool", n_added)
     if limit:
         pool = pool[:limit]
 
