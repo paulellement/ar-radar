@@ -5,13 +5,13 @@ description = "A&R Radar: spot fast-growing small artists from public listening 
 requires-python = ">=3.11"
 dependencies = [
     "requests>=2.31",
+    "rapidfuzz>=3.9",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pandas>=2.2",
     "pyarrow>=16",
-    "rapidfuzz>=3.9",
     "databricks-sdk>=0.40",
     "python-dotenv>=1.0",
     "pytest>=8",
@@ -22,6 +22,7 @@ dev = [
 [project.scripts]
 anr-candidates = "anr_radar.collect.candidates:main"
 anr-snapshot = "anr_radar.collect.snapshot:main"
+anr-events = "anr_radar.collect.events:main"
 anr-pipeline = "anr_radar.pipeline:main"
 
 [build-system]
@@ -44,3 +45,4 @@ select = ["E", "F", "I", "B", "UP"]
 [tool.ruff.lint.per-file-ignores]
 "scripts/*.py" = ["E402", "E501"]  # Databricks notebook sources
 "src/anr_radar/transform/silver.py" = ["E501"]  # long SQL COMMENT strings
+"src/anr_radar/transform/gold.py" = ["E501"]

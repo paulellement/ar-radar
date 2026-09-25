@@ -6,6 +6,7 @@ keeps the logic simple; switch to MERGE if the pool or history grows by orders o
 
 import logging
 
+from anr_radar.matching.names import match_performers
 from anr_radar.tables import Tables
 
 log = logging.getLogger(__name__)
@@ -110,12 +111,107 @@ def statements(t: Tables) -> list[str]:
     FROM {t("bronze", "lastfm_similar_raw")}
     WHERE snapshot_date = (SELECT max(snapshot_date) FROM {t("bronze", "lastfm_similar_raw")})
     """
-    return [info_parsed, artist_daily, artist_profile, chart_daily, artist_similar]
+    return [
+        info_parsed,
+        artist_daily,
+        artist_profile,
+        chart_daily,
+        artist_similar,
+        *event_statements(t),
+    ]
+
+
+def event_statements(t: Tables) -> list[str]:
+    """Only the latest Ticketmaster pull matters: it is the current list of upcoming shows."""
+    latest = f"""
+    CREATE OR REPLACE TEMP VIEW tm_latest AS
+    SELECT raw FROM {t("bronze", "tm_events_raw")}
+    WHERE snapshot_date = (SELECT max(snapshot_date) FROM {t("bronze", "tm_events_raw")})
+    QUALIFY row_number() OVER (
+      PARTITION BY raw:payload.id::string ORDER BY raw:fetched_at::string DESC) = 1
+    """
+    venue = "raw:payload['_embedded']['venues'][0]"
+    price = "raw:payload.priceRanges[0]"
+    events = f"""
+    CREATE OR REPLACE TABLE {t("silver", "events")}
+    COMMENT 'Upcoming music events (Ticketmaster Discovery API, latest daily pull). Coverage of the smallest venues is partial: many sell through Dice, Eventbrite or their own sites.'
+    AS SELECT
+      raw:payload.id::string                               AS event_id,
+      raw:payload.name::string                             AS event_name,
+      try_cast(raw:payload.dates.start.localDate::string AS DATE) AS event_date,
+      raw:payload.dates.start.localTime::string            AS local_time,
+      raw:payload.dates.status.code::string                AS status,
+      {venue}.name::string                                 AS venue,
+      {venue}.id::string                                   AS venue_id,
+      {venue}.city.name::string                            AS city,
+      raw:payload.classifications[0].genre.name::string    AS tm_genre,
+      raw:payload.classifications[0].subGenre.name::string AS tm_subgenre,
+      {price}.min::double                                  AS min_price,
+      {price}.max::double                                  AS max_price,
+      {price}.currency::string                             AS currency,
+      raw:payload.url::string                              AS ticket_url
+    FROM tm_latest
+    """
+    performers = f"""
+    CREATE OR REPLACE TABLE {t("silver", "event_performers")}
+    COMMENT 'Performers billed on each upcoming event, in billing order (0 = headliner).'
+    AS SELECT
+      raw:payload.id::string                                   AS event_id,
+      a.pos                                                    AS billing_order,
+      a.value:id::string                                       AS attraction_id,
+      a.value:name::string                                     AS performer_name,
+      nullif(a.value:externalLinks.musicbrainz[0].id::string, '') AS performer_mbid
+    FROM tm_latest,
+    LATERAL variant_explode(raw:payload['_embedded']['attractions']) AS a
+    """
+    return [latest, events, performers]
+
+
+def match_events(spark, t: Tables) -> None:
+    """Match event performers to tracked artists (Python: rapidfuzz), then write the matches.
+    Uncertain matches land in event_match_review for a human to check."""
+    performers = [
+        r.asDict()
+        for r in spark.sql(f"""
+        SELECT DISTINCT attraction_id, performer_name, performer_mbid
+        FROM {t("silver", "event_performers")}""").collect()
+    ]
+    artists = [
+        r.asDict()
+        for r in spark.sql(
+            f"SELECT artist_key, name, mbid FROM {t('silver', 'artist_profile')}"
+        ).collect()
+    ]
+    matches = match_performers(performers, artists)
+    schema = (
+        "attraction_id STRING, performer_name STRING, artist_key STRING, "
+        "artist_name STRING, match_score DOUBLE, match_method STRING"
+    )
+    table = t("silver", "event_artist_match")
+    (
+        spark.createDataFrame(matches or [], schema=schema)
+        .write.mode("overwrite")
+        .option("overwriteSchema", "true")
+        .saveAsTable(table)
+    )
+    spark.sql(f"""
+        CREATE OR REPLACE VIEW {t("silver", "event_match_review")}
+        COMMENT 'Uncertain performer-to-artist name matches for a human to confirm or reject.'
+        AS SELECT m.*, e.event_name, e.event_date, e.venue
+        FROM {table} m
+        JOIN {t("silver", "event_performers")} p USING (attraction_id)
+        JOIN {t("silver", "events")} e USING (event_id)
+        WHERE m.match_method = 'review'""")
+    counts = {}
+    for m in matches:
+        counts[m["match_method"]] = counts.get(m["match_method"], 0) + 1
+    log.info("event performer matches: %s", counts)
 
 
 def run(spark, t: Tables) -> None:
     for sql in statements(t):
         spark.sql(sql)
+    match_events(spark, t)
     counts = spark.sql(
         f"SELECT count(*), count(DISTINCT snapshot_date) FROM {t('silver', 'artist_daily')}"
     ).first()

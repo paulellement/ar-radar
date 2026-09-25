@@ -132,6 +132,31 @@ def merge_pool(
     return list(pool.values())
 
 
+def add_event_performers(
+    pool: list[dict], performers: list[dict], pool_date: str, cap: int
+) -> tuple[list[dict], int]:
+    """Add performers of upcoming local shows that the pool doesn't have yet (by key or name).
+    They sit outside MAX_POOL_SIZE, under their own cap."""
+    keys = {r["artist_key"] for r in pool}
+    names = {normalize_name(r["name"]) for r in pool}
+    budget = cap - sum(r["source"].startswith("event:") for r in pool)
+    added = []
+    for p in performers:
+        if len(added) >= budget:
+            break
+        name = normalize_name(p["name"])
+        if p["artist_key"] in keys or name in names:
+            continue
+        keys.add(p["artist_key"])
+        names.add(name)
+        added.append({**p, "added_date": pool_date, "pool_date": pool_date})
+    return pool + added, len(added)
+
+
+def save_pool(root: str, pool: list[dict]) -> None:
+    write_jsonl(pool_path(root), pool)
+
+
 def build_pool(client: LastFmClient, root: str, today: dt.date) -> list[dict]:
     existing = load_pool(root)
     seeds = collect_seeds(client, config.SEED_COUNTRIES, config.SEED_TAGS)

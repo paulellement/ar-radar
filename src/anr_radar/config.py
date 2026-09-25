@@ -88,3 +88,11 @@ SCORE_WEIGHTS = {
     "yt_view_growth_z": 0.15,
 }
 CHART_ENTRY_CAP = 3  # each new country chart ~ one standard deviation, capped
+
+# --- Shows (Ticketmaster Discovery API) ---------------------------------------
+EVENT_CITIES = [("Toronto", "CA"), ("Montreal", "CA")]
+EVENT_HORIZON_DAYS = 90
+TICKETMASTER_REQUESTS_PER_SEC = 4.0  # API limit is 5/s
+# Performers of upcoming local shows join the candidate pool outside MAX_POOL_SIZE, so the
+# Shows feature can score them. Capped separately.
+MAX_EVENT_ARTISTS = 2500

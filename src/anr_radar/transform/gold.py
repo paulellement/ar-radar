@@ -174,6 +174,50 @@ def build_growth_history(spark, t: Tables) -> None:
     )
 
 
+UPCOMING_COMMENT = (
+    "One row per tracked artist per upcoming show in Toronto or Montreal (Ticketmaster), "
+    "with the artist's breakout signals. Sort by breakout_score to find rising artists "
+    "playing soon; filter on min_price for cheap shows. Small-venue coverage is partial."
+)
+UPCOMING_COLUMNS = {
+    "event_date": "Local date of the show",
+    "local_time": "Local start time (HH:MM:SS), when announced",
+    "city": "City of the venue",
+    "venue": "Venue name",
+    "event_name": "Event title as listed on Ticketmaster",
+    "artist_name": "Tracked artist playing the show",
+    "is_headliner": "True if the artist is billed first",
+    "breakout_score": "Artist's 0-100 breakout score (see artist_signals); null = no fresh data",
+    "min_price": "Lowest listed ticket price (null when Ticketmaster lists no price)",
+    "max_price": "Highest listed ticket price",
+    "currency": "Price currency, e.g. CAD",
+    "ticket_url": "Ticketmaster event page",
+    "match_method": "How the performer was matched to the artist: mbid, exact or fuzzy name",
+}
+
+
+def build_upcoming_shows(spark, t: Tables) -> None:
+    table = t("gold", "upcoming_shows")
+    spark.sql(f"""
+        CREATE OR REPLACE TABLE {table} AS
+        SELECT e.event_date, e.local_time, e.city, e.venue, e.event_name, e.event_id,
+               m.artist_key, coalesce(s.name, m.artist_name) AS artist_name,
+               p.billing_order = 0 AS is_headliner,
+               s.breakout_score, s.breakout_rank, s.size_band, s.lastfm_listeners, s.genres,
+               s.listeners_7d_growth_pct, s.is_provisional,
+               e.min_price, e.max_price, e.currency, e.ticket_url, e.tm_genre, e.status,
+               m.match_method
+        FROM {t("silver", "events")} e
+        JOIN {t("silver", "event_performers")} p USING (event_id)
+        JOIN {t("silver", "event_artist_match")} m
+          ON m.attraction_id = p.attraction_id AND m.match_method IN ('mbid', 'exact', 'fuzzy')
+        LEFT JOIN {t("gold", "artist_signals")} s ON s.artist_key = m.artist_key
+        WHERE e.event_date >= current_date() AND e.status <> 'cancelled'
+    """)
+    set_comments(spark, table, UPCOMING_COMMENT, UPCOMING_COLUMNS)
+
+
 def run(spark, t: Tables) -> None:
     build_signals(spark, t)
     build_growth_history(spark, t)
+    build_upcoming_shows(spark, t)
