@@ -13,6 +13,10 @@ from anr_radar.tables import Tables
 log = logging.getLogger(__name__)
 
 PROMPT_VERSION = "v2"
+NO_LABEL = "No label mentioned in the Last.fm bio"
+# Regex for the Signing status section, as it must appear inside a SQL string literal: Spark
+# SQL unescapes backslashes in literals, so the regex's \s is written \\s here.
+SIGNING_SECTION_RE = r"(?s)### Signing status\\s*(.*?)\\s*(###|$)"
 MAX_BIO_CHARS = 900
 
 INSTRUCTIONS = """You are writing a one-page scout brief for an A&R team at a record label.
@@ -162,15 +166,25 @@ def run(
             WHEN MATCHED THEN UPDATE SET
               response = r.response, model = '{fallback_model}', generated_at = current_timestamp()
         """)
+    # signing_status / label_mentioned are structured copies of the brief's Signing status
+    # section: Genie searching the prose for "label" matched every brief ("No label
+    # mentioned..."), so filters need a real column.
     spark.sql(f"""
         CREATE OR REPLACE TABLE {table} AS
-        SELECT artist_key, name, as_of_date,
-               CASE WHEN NOT ({empty}) THEN trim({CLEAN_SQL.format(expr="response.result")})
-               END AS brief_md,
-               CASE WHEN {empty} THEN coalesce(response.errorMessage, 'empty response')
-               END AS error,
-               model, '{PROMPT_VERSION}' AS prompt_version, generated_at, prompt
-        FROM {raw}
+        SELECT *, CASE WHEN signing_status IS NULL THEN NULL
+                       ELSE signing_status NOT LIKE '{NO_LABEL}%' END AS label_mentioned
+        FROM (
+          SELECT *,
+                 nullif(trim(regexp_extract(brief_md, '{SIGNING_SECTION_RE}', 1)), '')
+                   AS signing_status
+          FROM (
+            SELECT artist_key, name, as_of_date,
+                   CASE WHEN NOT ({empty}) THEN trim({CLEAN_SQL.format(expr="response.result")})
+                   END AS brief_md,
+                   CASE WHEN {empty} THEN coalesce(response.errorMessage, 'empty response')
+                   END AS error,
+                   model, '{PROMPT_VERSION}' AS prompt_version, generated_at, prompt
+            FROM {raw}))
     """)
     failed = spark.sql(f"SELECT count(*) FROM {table} WHERE error IS NOT NULL").first()[0]
     if failed:

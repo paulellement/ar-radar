@@ -1,6 +1,13 @@
 import datetime as dt
+import re
 
-from anr_radar.briefs.generate import MAX_BIO_CHARS, build_prompt
+from anr_radar.briefs.generate import (
+    INSTRUCTIONS,
+    MAX_BIO_CHARS,
+    NO_LABEL,
+    SIGNING_SECTION_RE,
+    build_prompt,
+)
 
 FACTS = {
     "name": "Florence Road",
@@ -68,3 +75,20 @@ def test_long_bios_are_trimmed_at_a_word():
 def test_show_without_price():
     shows = [{**FACTS["shows"][0], "min_price": None}]
     assert "The Drake Hotel, Toronto\n" in build_prompt({**FACTS, "shows": shows}) + "\n"
+
+
+def test_label_flag_matches_the_wording_the_prompt_demands():
+    # label_mentioned is derived by prefix-matching NO_LABEL; keep it in sync with the prompt.
+    assert f'write exactly: "{NO_LABEL}' in INSTRUCTIONS.replace("\n", " ")
+
+
+def test_signing_section_regex_after_sql_unescaping():
+    # Spark SQL turns \\ into \ inside string literals; emulate that, then run the regex.
+    regex = SIGNING_SECTION_RE.replace("\\\\", "\\")
+    brief = (
+        "### Who they are  \nX.\n\n### Signing status  \n"
+        "No label mentioned in the Last.fm bio.\n\n### What's growing\n..."
+    )
+    assert re.search(regex, brief).group(1) == "No label mentioned in the Last.fm bio."
+    last = "### Signing status\nSigned to XO Records."
+    assert re.search(regex, last).group(1) == "Signed to XO Records."

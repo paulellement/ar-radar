@@ -25,7 +25,7 @@ Data and definitions
   It is updated daily. It flags fast growth; it does not predict success. Never say an
   artist "will" break or blow up.
 - "Rising", "breaking", "blowing up", "trending", "buzzing", "hot" all mean: high
-  breakout_score. Sort by breakout_score DESC.
+  breakout_score. Filter breakout_score >= 70 and sort by breakout_score DESC.
 - breakout_score is a 0-100 percentile of recent growth compared with artists of the same
   size band. 90+ means top 10% of growth for their size.
 - Size bands (lastfm_listeners): <10k, 10k-50k, 50k-500k, 500k-2M, 2M+. "Small",
@@ -40,7 +40,12 @@ Data and definitions
   today) or the artist has new_country_charts_14d > 0. If that finds nothing, fall back to
   tags containing the country or nationality and say that you did.
 - "This week" / "this month" for growth: listeners_7d_growth_pct / listeners_14d_growth_pct.
-  For shows, filter event_date.
+  For shows, filter event_date. "This weekend" = the coming Friday to Sunday; if today is
+  Saturday or Sunday, use today through Sunday.
+- Labels: use scout_briefs.label_mentioned (true = the bio names a label, publisher or
+  management) and scout_briefs.signing_status for the quote. Never search brief_md for the
+  word "label": every brief without one says "No label mentioned". label_mentioned = false
+  does NOT mean unsigned, only that the bio doesn't say.
 - is_provisional = true means growth was measured over less than 7 days of history. Mention
   it when those rows appear in an answer.
 
@@ -115,6 +120,15 @@ ORDER BY breakout_score DESC
 LIMIT 10
 ```
 
+**Which rising artists mention a record label in their brief?**
+```sql
+SELECT b.name, s.size_band, s.breakout_score, b.signing_status
+FROM workspace.anr_gold.scout_briefs b
+JOIN workspace.anr_gold.artist_signals s USING (artist_key)
+WHERE b.label_mentioned
+ORDER BY s.breakout_score DESC
+```
+
 **Tell me about CHXRRY**
 ```sql
 SELECT b.name, b.brief_md, s.breakout_score, s.size_band, s.lastfm_url
@@ -131,3 +145,11 @@ wrong answers below with the fix you made. This log goes into the README's
 
 | Date | Question | What Genie got wrong | Fix |
 |---|---|---|---|
+| 2026-09-26 | Which rising artists mention a record label in their brief? | Filtered `brief_md ILIKE '%label%'`, which matches *every* brief ("No label mentioned..."), then answered that none had a label. CHXRRY (XO Records), Tuide (ABD) and Evan (BELIFT LAB) do. | Structured columns `signing_status` / `label_mentioned` in `scout_briefs`, an instruction to use them, and a trusted example query. Lesson: don't make an LLM filter free text; give it a column. |
+| 2026-09-28 | (re-test) Which rising artists mention a record label in their brief? | Fixed: returned 6 artists from the prod top 50 with correct labels (Gilla Band/Rough Trade, Tuide/ABD, CHXRRY/XO Records, Evan/BELIFT LAB, Kiefer/Stones Throw, After/Skullr Records). Minor: called 99.2 "top 1% of rising artists" (it's top 1% within their size band). | None needed. Idea: add "Which rising artists have no label mentioned?" as a sample question: more useful for scouting. |
+| 2026-09-26 | What shows are happening in Montreal this weekend with rising artists? | Included Alcest at breakout_score 42.4: "rising" had a sort order but no threshold. Used Monday-Sunday for "this weekend". | "Rising" now means breakout_score >= 70; "this weekend" defined as Friday-Sunday. |
+| 2026-09-26 | Will CHXRRY be the next big thing? | Correctly declined to predict, but called the question "irrelevant to the database schema". | Acceptable; could add a friendlier refusal line. |
+
+Test method: all 10 sample questions plus 3 edge cases ("near me" without a city,
+"hiphop" spelled as one word, a prediction question) sent through the Genie Conversation
+API, and each generated SQL statement and result checked by hand. 10 of 13 fully right.
