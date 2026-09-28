@@ -106,11 +106,16 @@ The Genie space runs on the gold tables. Its instructions translate business lan
 - "cheap" means $30 or less, keeping shows with no listed price;
 - restyled-alias pages are always excluded.
 
-I wrote 4 example SQL queries and tested all of them against real tables before loading them into Genie. The whole configuration is kept in git (`genie/instructions.md`).
+I wrote example SQL queries and tested all of them against real tables before loading them into Genie. The whole configuration is kept in git (`genie/instructions.md`).
+
+**Testing Aldous.** I sent 13 questions (the 10 examples plus 3 edge cases) through the Genie Conversation API and checked each generated SQL statement and result by hand. 10 of 13 were fully right, including asking for a city on "near me" and declining to predict success.
+- **The best finding: don't make an LLM filter free text.** Asked which artists mention a label, Genie searched briefs for "label", which matches *every* brief because each says "No label mentioned". It then answered that none had one, when three do. The fix was in the data, not the prompt: `scout_briefs` now has structured `signing_status` and `label_mentioned` columns, plus an instruction and an example query that use them.
+- **"Rising" needed a threshold, not just a sort order.** An artist at breakout score 42 appeared in a "rising artists" answer. "Rising" now means a score of 70 or more, and "this weekend" is defined as Friday to Sunday.
+- **Along the way I caught my own escaping bug:** Spark SQL unescapes backslashes inside string literals, so the regex that extracts the signing section silently broke. It now has a test that emulates the unescaping.
 
 ## 7. Engineering practice
 - **Databricks Asset Bundles:** jobs, schedules and dependencies are defined as code, with separate dev and prod targets. The package is built as a wheel and run with `python_wheel_task`.
-- **60 pytest tests** covering scoring, matching, API clients (with mocked HTTP), paging, pool logic, gold row types, quality rules and prompts. **GitHub Actions** runs ruff and pytest on every push.
+- **62 pytest tests** covering scoring, matching, API clients (with mocked HTTP), paging, pool logic, gold row types, quality rules and prompts. **GitHub Actions** runs ruff and pytest on every push.
 - **Automated quality checks** run as the last pipeline task, and any failure emails me:
   - freshness;
   - coverage of at least 90% of the pool;
