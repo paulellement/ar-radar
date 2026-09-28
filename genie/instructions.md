@@ -150,6 +150,13 @@ wrong answers below with the fix you made. This log goes into the README's
 | 2026-09-26 | What shows are happening in Montreal this weekend with rising artists? | Included Alcest at breakout_score 42.4: "rising" had a sort order but no threshold. Used Monday-Sunday for "this weekend". | "Rising" now means breakout_score >= 70; "this weekend" defined as Friday-Sunday. |
 | 2026-09-26 | Will CHXRRY be the next big thing? | Correctly declined to predict, but called the question "irrelevant to the database schema". | Acceptable; could add a friendlier refusal line. |
 
+| 2026-09-28 | (full re-test) Who's blowing up in hiphop? | #1 was Jane Remover, matched only through her 5th tag "trap" (`LIKE '%rap%'`). Defensible (trap is a hip-hop subgenre) but a weak top answer. | Open. Option: match whole tags with RLIKE instead of substrings, or weight earlier tags. |
+| 2026-09-28 | (full re-test) Which rising artists have cheap shows in Toronto soon? | Counted correct (it followed the rules and said most prices are unlisted), but included an artist at Scotiabank Arena with no listed price. Data gap: only ~12% of shows list prices. | App: also filter by venue size. |
+
 Test method: all 10 sample questions plus 3 edge cases ("near me" without a city,
 "hiphop" spelled as one word, a prediction question) sent through the Genie Conversation
-API, and each generated SQL statement and result checked by hand. 10 of 13 fully right.
+API, and each generated SQL statement and result checked by hand. Correct = the SQL and the
+results match what the person meant.
+
+- 2026-09-26, first pass: **10 of 13 (77%)**
+- 2026-09-28, after fixes: **12 of 13 (92%)**. Both earlier failures fixed; one new weak answer (tag substring match).
