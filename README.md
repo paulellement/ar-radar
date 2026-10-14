@@ -1,12 +1,10 @@
 # A&R Radar
 
-**Find artists who are growing fast for their size, before they break, and catch them in a small room while tickets are still cheap.**
+**Find fast growing artists while their concert tickets are still cheap**
 
-A friend told me she wants to go to more small shows because they're cheaper, but it's hard to tell who's actually good. That's the same problem an A&R scout has, from the other side: spotting artists early. Scouts check dozens of dashboards, charts and feeds to do it by hand.
+People want to go to more small shows because they're cheaper, but it's hard to tell who's actually good. A&R scouts have the same problem for finding artists.
 
-A&R Radar does the checking every day. It tracks 5,700+ artists and ~940 upcoming Toronto and Montréal concerts, flags the artists growing unusually fast *compared with artists of a similar size*, writes a one-page scout brief for the top ones, and lets you ask questions in plain English through **Aldous**, a chat assistant.
-
-> It surfaces fast growth. It does not predict hits. See [Limitations](#limitations).
+A&R Radar does the checking automatically every day. It tracks 5,700+ artists and ~940 upcoming Toronto and Montreal concerts, flags the artists growing unusually fast *compared with artists of a similar size*, writes a one-page scout brief for the top ones, and lets you ask questions in plain English through **Aldous**, a chat assistant.
 
 ## Ask Aldous
 
@@ -25,8 +23,8 @@ Every answer shows the SQL behind it. Aldous was tested on 13 questions (10 exam
 
 ## What it does
 
-- **Breakout score (0–100):** each artist's recent listener and play growth, compared only with artists of a similar size. A jump from 20k to 26k listeners counts for more than 2M to 2.1M.
-- **Shows:** rising artists with upcoming shows in Toronto and Montréal, with venue, date and price when listed.
+- **Breakout score (0–100):** each artist's recent listener and play growth, compared only with artists of a similar size. A jump from 20k to 26k listeners is more significant than 2M to 2.1M.
+- **Shows:** rising artists with upcoming shows in Toronto and Montreal, with venue, date and price if listed on Ticketmaster's API.
 - **Scout briefs:** a weekly one-page brief for the top 50 artists under 2M listeners, written by an LLM using only facts from the pipeline. It always states signing status, quoted from the artist's bio.
 - **Aldous:** ask questions like *"who's breaking in indie pop this month?"* instead of filtering tables.
 
@@ -43,17 +41,6 @@ Last.fm API ──────┘   (daily job)      └────────
 - **Scout briefs:** `ai_query` on a Databricks-hosted model (gpt-oss-120b, Llama 3.3 as fallback), with each brief's exact prompt stored so every claim can be checked.
 - **Engineering:** Databricks Asset Bundles with separate dev and prod, 62 pytest tests, GitHub Actions CI, and quality checks that fail the job and send an alert.
 
-The full technical write-up is in [`docs/technical_summary.md`](docs/technical_summary.md).
-
-## What the data taught me
-
-Most of the work was catching data that looked right and wasn't. Details are in [`docs/data_notes.md`](docs/data_notes.md).
-
-- **Cached stats:** 96% of artists looked unchanged overnight at first. Unchanged numbers are now treated as "no data yet", not "zero growth".
-- **Renamed pages look like breakouts:** JAY-Z restyled as "JAŸ-Z" got a brand-new Last.fm page and ranked near the top. These are now flagged and excluded.
-- **Look-alike names:** matching concert listings to artists held back all 12 near-misses on real data (Spoons vs Spoon, horsegiirL vs Horsegirl) instead of merging them.
-- **Don't make an LLM filter free text:** Aldous once answered that no artists had a label, because it searched briefs for the word "label", which every brief contains ("No label mentioned…"). The fix was a structured column, not a better prompt.
-
 ## Limitations
 
 - Last.fm only counts people who log their listening there, and its users skew toward certain demographics and genres. It's one signal, not the whole picture.
@@ -64,9 +51,9 @@ Most of the work was catching data that looked right and wasn't. Details are in 
 
 ## Status
 
-- ✅ Daily pipeline, breakout score, shows, scout briefs, Aldous
-- 🚧 Streamlit app (Shows, Ask Aldous, Radar and Artist tabs) and a demo video
-- 🔜 Backtest of the breakout score once there are a few weeks of history
+- Live: Daily pipeline, breakout score, shows, scout briefs, Aldous
+- Future: Streamlit app (Shows, Ask Aldous, Radar and Artist tabs) and a demo video
+- Future: Backtest of the breakout score once there are a few weeks/months of history
 
 ## Repo layout
 
@@ -92,3 +79,11 @@ databricks auth login
 databricks bundle deploy -t prod
 databricks bundle run -t prod collector
 ```
+
+## Use of AI
+
+Claude Code was used to write most of the pipeline code and unit tests, starting
+from a detailed problem statement I wrote about finding fast-rising
+artists. I set the scope and reviewed the generated code.
+
+The genie assistant was setup by myself on databricks, with claude used to help generate example queries and test prompts.
