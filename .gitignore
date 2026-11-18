@@ -9,7 +9,7 @@ build/
 .databricks/
 .env
 data/
-
+docs/
 # private notes
 Starter_plan.md
 *.local.yml

@@ -61,7 +61,6 @@ Last.fm API ──────┘   (daily job)      └────────
 src/anr_radar/     collectors, API clients, scoring, matching, transforms, briefs, quality checks
 resources/         Databricks job definitions (Asset Bundle)
 genie/             Aldous configuration and test log
-docs/              technical summary and data notes
 tests/             pytest suite
 ```
 
