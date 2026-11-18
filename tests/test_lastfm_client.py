@@ -39,3 +39,19 @@ def test_non_retryable_error_raises(client):
     with pytest.raises(LastFmError):
         client.artist_info("X")
     assert len(responses.calls) == 1
+
+
+@responses.activate
+def test_user_top_artists_passes_period_and_wraps_single(client):
+    responses.get(API_URL, json={"topartists": {"artist": {"name": "Solo", "playcount": "12"}}})
+    assert client.user_top_artists("someone", period="3month") == [
+        {"name": "Solo", "playcount": "12"}
+    ]
+    assert "period=3month" in responses.calls[0].request.url
+
+
+@responses.activate
+def test_unknown_user_raises_not_found(client):
+    responses.get(API_URL, json={"error": 6, "message": "User not found"})
+    with pytest.raises(NotFound):
+        client.user_info("nobody-here")

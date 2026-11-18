@@ -39,7 +39,56 @@ Last.fm API ──────┘   (daily job)      └────────
 - **Daily Databricks Job:** pulls upcoming concerts, snapshots every tracked artist on Last.fm, then rebuilds the bronze → silver → gold tables and runs data-quality checks. Last.fm only reports current totals, so these daily snapshots *are* the history.
 - **Breakout score:** log growth over 7 and 14 days, turned into a robust z-score (median/MAD) within listener-size bands, soft-capped, and combined into a percentile.
 - **Scout briefs:** `ai_query` on a Databricks-hosted model (gpt-oss-120b, Llama 3.3 as fallback), with each brief's exact prompt stored so every claim can be checked.
-- **Engineering:** Databricks Asset Bundles with separate dev and prod, 62 pytest tests, GitHub Actions CI, and quality checks that fail the job and send an alert.
+- **Engineering:** Databricks Asset Bundles with separate dev and prod, 138 pytest tests, GitHub Actions CI, and quality checks that fail the job and send an alert.
+
+## Agent access (MCP)
+
+Aldous answers questions inside Databricks. To let *any* agent explore the pipeline's output, I wrapped the gold tables in a small, read-only [MCP](https://modelcontextprotocol.io) server. Claude Code or Claude Desktop can then call scouting tools directly: *"who's breaking in indie pop in Canada?"*, *"rising artists with cheap Toronto shows this month?"*
+
+```
+Databricks gold tables ──export_snapshot.py──▶ mcp_server/data/ar_radar.duckdb (local, read-only)
+                                                        │
+                                              mcp_server/server.py (MCP, stdio)
+                                                        │
+                                              Claude Code / Claude Desktop
+```
+
+| Tool | What it does |
+|---|---|
+| `top_breakout_artists` | ranks by breakout score; filters for country, genre tag, size band |
+| `artist_profile` | one artist: signals, 30-day trend (steady vs. one-day spike), scout brief, shows; asks when a name is ambiguous |
+| `upcoming_shows` | Toronto/Montréal shows by rising artists; filters for price, date window, genre, minimum score; headliner or opener, plus live ticket status |
+| `data_status` | how fresh the snapshot is |
+| `my_taste_profile` | your Last.fm taste, and which of *your* artists are breaking now |
+| `discover_for_me` | rising artists you don't listen to yet, with "because you play X" |
+| `shows_for_me` | upcoming shows: your artists first, then rising artists that match your taste |
+
+Plus two resources (`ar-radar://definitions`, `ar-radar://limitations`) and two prompts (`scout_report`, `my_report`).
+
+**Personalized by Last.fm username.** No login is needed, because Last.fm listening is public. The server reads your top artists live, maps them to tracked artists by MusicBrainz ID or exact name (never fuzzy), and scores taste with Last.fm's similar-artist graph plus tag overlap. Every pick says why. Your listening is held in memory for 30 minutes and never stored or logged. Set `LASTFM_USERNAME` in `.env`, or just tell Claude your username.
+
+**Design choices:** narrow typed tools instead of a "run SQL" tool, bound parameters only, a read-only connection, and the same fuzzy-matching thresholds as the pipeline (it asks rather than guesses). It costs $0: a local DuckDB snapshot, no warehouse and no paid APIs (personal picks and live ticket status use the same free Last.fm and Ticketmaster keys as the pipeline). The reasoning and a decision log are in [`mcp_server/NOTES.md`](mcp_server/NOTES.md); schema notes are in [`mcp_server/SCHEMA.md`](mcp_server/SCHEMA.md).
+
+**Setup**
+
+```bash
+uv pip install -e ".[mcp]"
+databricks auth login --profile <profile>
+python mcp_server/export_snapshot.py --profile <profile>   # or --from-files <folder of .parquet/.csv>
+claude                                                     # approve "ar-radar" from .mcp.json
+```
+
+Or register it yourself with `claude mcp add ar-radar -- .venv/bin/python mcp_server/server.py`. For Claude Desktop, add this to `claude_desktop_config.json` (absolute paths):
+
+```json
+{ "mcpServers": { "ar-radar": {
+    "command": "/path/to/repo/.venv/bin/python",
+    "args": ["/path/to/repo/mcp_server/server.py"] } } }
+```
+
+To debug, run `npx @modelcontextprotocol/inspector .venv/bin/python mcp_server/server.py`.
+
+**Eval: 5/5.** Five scouting questions, with expected answers written in advance from direct SQL and run through Claude Code with only this server available (no shell or file access). Building the eval caught 3 data bugs, and one run caught a stale docstring that the model repeated to the user. A second eval with 3 personal questions on my own Last.fm account scored 2/3 on the first run (Claude read 0.21% growth as 21%) and 3/3 after stating the units in the tool descriptions. Building it also caught 3 bugs. Details are in [`mcp_server/eval_questions.md`](mcp_server/eval_questions.md).
 
 ## Limitations
 
@@ -52,6 +101,7 @@ Last.fm API ──────┘   (daily job)      └────────
 ## Status
 
 - Live: Daily pipeline, breakout score, shows, scout briefs, Aldous
+- Live: Read-only MCP server so Claude can query the results, with personal picks by Last.fm username
 - Future: Streamlit app (Shows, Ask Aldous, Radar and Artist tabs) and a demo video
 - Future: Backtest of the breakout score once there are a few weeks/months of history
 
@@ -61,6 +111,7 @@ Last.fm API ──────┘   (daily job)      └────────
 src/anr_radar/     collectors, API clients, scoring, matching, transforms, briefs, quality checks
 resources/         Databricks job definitions (Asset Bundle)
 genie/             Aldous configuration and test log
+mcp_server/        MCP server, snapshot export, tests and eval (agent access)
 tests/             pytest suite
 ```
 
@@ -71,7 +122,7 @@ Requires a Databricks workspace (Free Edition works), a Last.fm API key and a Ti
 ```bash
 uv venv --python 3.12 && uv pip install -e ".[dev]"
 cp .env.example .env                  # add your API keys
-pytest                                # 62 tests
+pytest                                # 138 tests (64 pipeline + 74 MCP)
 databricks auth login
 ./scripts/setup_secrets.sh            # stores keys in a Databricks secret scope
 # run scripts/setup_uc.sql in the SQL editor, then:

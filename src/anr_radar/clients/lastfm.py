@@ -96,6 +96,17 @@ class LastFmClient:
         data = self.call("artist.getinfo", artist=name, autocorrect=0)
         return data["artist"]
 
+    # --- user listening (public by username; used by the MCP server's personal tools) --
+
+    def user_info(self, user: str) -> dict:
+        """Raises NotFound (error 6) for an unknown username."""
+        return self.call("user.getinfo", user=user)["user"]
+
+    def user_top_artists(self, user: str, period: str = "overall", limit: int = 50) -> list[dict]:
+        """period: overall | 7day | 1month | 3month | 6month | 12month."""
+        data = self.call("user.gettopartists", user=user, period=period, limit=limit)
+        return _as_list(data.get("topartists", {}).get("artist"))
+
 
 def _as_list(value) -> list[dict]:
     """Last.fm returns a bare object instead of a one-element list for single results."""
