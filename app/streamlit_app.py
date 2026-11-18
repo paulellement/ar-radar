@@ -19,6 +19,8 @@ from urllib.parse import quote_plus
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "mcp_server"))
 
+import altair as alt  # noqa: E402
+import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
 
@@ -44,42 +46,57 @@ NEEDS_ATTENTION = {"off sale", "rescheduled", "postponed", "sales closed"}
 CSS = """
 <style>
 h1, h2, h3 { letter-spacing: -0.01em; }
+/* Streamlit gives each markdown block a -1rem bottom margin; ours need their full height. */
+[data-testid="stMarkdownContainer"]:has(> .td, > .th, > .meta, > .lead, > .elsewhere) {
+  margin-bottom: 0 !important; }
 .stTabs button[role="tab"] p { font-family: "Archivo Narrow", sans-serif; font-weight: 700;
   font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.04em; }
-.item { display: grid; grid-template-columns: 4.2rem 1fr auto; gap: 0 1.1rem;
-  padding: 0.95rem 0; border-top: 1px solid #D3CAB8; align-items: start; }
-.item:last-child { border-bottom: 1px solid #D3CAB8; }
+[class*="st-key-list-"], [class*="st-key-tbl-"] { gap: 0 !important; }
+[class*="st-key-item-"] { border-top: 1px solid #D3CAB8; padding: 0.85rem 0 0.8rem; }
+[class*="st-key-item-"] [data-testid="stVerticalBlock"] { gap: 0.1rem; }
+[class*="st-key-list-"] > div:last-child[class*="st-key-item-"] {
+  border-bottom: 1px solid #D3CAB8; }
 .lead { font-family: "Archivo Narrow", sans-serif; text-align: center; line-height: 1.05;
   text-transform: uppercase; }
 .lead .top { font-size: 0.78rem; letter-spacing: 0.08em; color: #C8401E; font-weight: 700; }
 .lead .big { font-size: 2rem; font-weight: 700; }
 .lead .low { font-size: 0.75rem; color: #6E685D; letter-spacing: 0.06em; }
-.title { font-family: "Archivo Narrow", sans-serif; font-weight: 700; font-size: 1.3rem;
-  text-transform: uppercase; letter-spacing: 0.01em; line-height: 1.15; }
-.meta { color: #4A463F; font-size: 0.92rem; margin-top: 0.1rem; }
-.facts { margin-top: 0.4rem; font-family: "IBM Plex Mono", monospace; font-size: 0.78rem;
+[class*="st-key-open-"] button { padding: 0; min-height: 0; justify-content: flex-start; }
+[class*="st-key-open-"] button p { font-family: "Archivo Narrow", sans-serif; font-weight: 700;
+  font-size: 1.3rem; text-transform: uppercase; letter-spacing: 0.01em; color: #1C1B18;
+  text-align: left; line-height: 1.15; }
+[class*="st-key-open-"] button:hover p { color: #C8401E; text-decoration: underline;
+  text-underline-offset: 3px; }
+[class*="st-key-row-"] [class*="st-key-open-"] button p { font-family: inherit;
+  font-size: 0.92rem; text-transform: none; font-weight: 500; letter-spacing: 0; }
+.meta { color: #4A463F; font-size: 0.92rem; }
+.facts { margin-top: 0.3rem; font-family: "IBM Plex Mono", monospace; font-size: 0.78rem;
   color: #4A463F; text-transform: uppercase; letter-spacing: 0.02em; }
-.facts span + span::before { content: "/"; margin: 0 0.5rem; color: #B4AB98; }
-.facts .hot { color: #C8401E; font-weight: 500; }
-.why { margin-top: 0.35rem; font-size: 0.88rem; color: #6E685D; }
-.cta { align-self: center; font-family: "Archivo Narrow", sans-serif; font-weight: 700;
-  text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.9rem; color: #1C1B18 !important;
-  border: 1.5px solid #1C1B18; padding: 0.35rem 0.8rem; text-decoration: none !important; }
+.facts .sep { margin: 0 0.5rem; color: #B4AB98; font-style: normal; }
+.facts .warn { color: #A3170F; background: #F7D9D3; padding: 0.05rem 0.35rem; font-weight: 600; }
+.why { margin-top: 0.3rem; font-size: 0.88rem; color: #6E685D; }
+.cta { display: inline-block; font-family: "Archivo Narrow", sans-serif;
+  font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.9rem;
+  color: #1C1B18 !important; border: 1.5px solid #1C1B18; padding: 0.35rem 0.8rem;
+  text-decoration: none !important; }
 .cta:hover { background: #1C1B18; color: #F4F0E8 !important; }
+.pricenote { font-size: 0.82rem; color: #4A463F; border-left: 3px solid #A3170F;
+  padding: 0.3rem 0 0.3rem 0.7rem; margin: 0.2rem 0 0.8rem; }
 .chips span { display: inline-block; border: 1px solid #B4AB98; padding: 0.1rem 0.5rem;
   margin: 0 0.35rem 0.4rem 0; font-size: 0.85rem; }
-table.list { width: 100%; border-collapse: collapse; font-size: 0.92rem; border: none; }
-table.list th, table.list td { border: none !important; background: none !important; }
-table.list th { text-align: left; font-family: "IBM Plex Mono", monospace; font-size: 0.72rem;
-  text-transform: uppercase; color: #6E685D; font-weight: 500; padding: 0.3rem 0.6rem 0.3rem 0;
-  border-bottom: 1.5px solid #1C1B18 !important; }
-table.list td { padding: 0.45rem 0.6rem 0.45rem 0; border-bottom: 1px solid #D3CAB8 !important; }
-table.list td.n { font-family: "IBM Plex Mono", monospace; font-size: 0.85rem; }
+[class*="st-key-head-"] { border-bottom: 1.5px solid #1C1B18; padding-bottom: 0.3rem; }
+.th { font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; text-transform: uppercase;
+  color: #6E685D; }
+[class*="st-key-row-"] { border-bottom: 1px solid #D3CAB8; padding: 0.4rem 0; }
+.td { font-size: 0.92rem; line-height: 1.6rem; }
+[class*="st-key-row-"] button { height: 1.6rem; }
+[class*="st-key-row-"] [data-testid="stElementContainer"] { margin: 0; }
+.td.n { font-family: "IBM Plex Mono", monospace; font-size: 0.85rem; }
+.td.untracked { color: #6E685D; cursor: default; }
+.noprofile { font-family: "IBM Plex Mono", monospace; font-size: 0.68rem; text-transform: uppercase;
+  border: 1px dashed #B4AB98; padding: 0 0.3rem; margin-left: 0.5rem; vertical-align: 1px; }
+.elsewhere { font-size: 0.9rem; margin: 0.15rem 0; }
 .note { font-size: 0.82rem; color: #6E685D; margin-top: 0.6rem; }
-@media (max-width: 640px) {
-  .item { grid-template-columns: 3.2rem 1fr; }
-  .cta { grid-column: 2; justify-self: start; margin-top: 0.5rem; }
-}
 </style>
 """
 
@@ -143,25 +160,54 @@ def clock(local_time):
         return None
 
 
-def item(lead, title, meta, facts, why, cta, url):
+PRICE_NOTE = (
+    "Prices come from Ticketmaster's public API, which often leaves them out, especially for "
+    "big shows. It doesn't say why; dynamic or tiered pricing is a common cause. Listed prices "
+    "can also be out of date or exclude fees. The ticket page always has the real price."
+)
+
+
+def price_note():
+    st.markdown(f'<div class="pricenote">{e(PRICE_NOTE)}</div>', unsafe_allow_html=True)
+
+
+def open_button(uid, name, artist_key):
+    """The artist's name; clicking it opens their profile. Untracked artists are plain text."""
+    if not artist_key:  # say why it isn't clickable rather than just leaving it plain
+        st.markdown(
+            f'<div class="td untracked">{e(name)}<span class="noprofile">no profile</span></div>',
+            unsafe_allow_html=True,
+        )
+    elif st.button(name, key=f"open-{uid}", type="tertiary"):
+        open_profile(artist_key, name)
+
+
+def item(uid, lead, title, artist_key, meta, facts, why, cta, url, clickable=True):
     """One listing row: a lead column (date or rank), the details, and a link out."""
-    facts_html = "".join(f'<span class="{cls}">{e(text)}</span>' for text, cls in facts)
-    link = (
-        f'<a class="cta" href="{e(url, quote=True)}" target="_blank" rel="noopener">{cta}</a>'
-        if url and url.startswith("https://")
-        else "<span></span>"
-    )
-    st.markdown(
-        f'<div class="item"><div class="lead">{lead}</div><div>'
-        f'<div class="title">{e(title)}</div><div class="meta">{e(meta)}</div>'
-        f'<div class="facts">{facts_html}</div>'
-        + (f'<div class="why">{e(why)}</div>' if why else "")
-        + f"</div>{link}</div>",
-        unsafe_allow_html=True,
-    )
+    sep = '<i class="sep">/</i>'
+    facts_html = sep.join(f'<span class="{cls}">{e(text)}</span>' for text, cls in facts)
+    with st.container(key=f"item-{uid}"):
+        left, body, right = st.columns([0.8, 7, 1.3], gap="medium", vertical_alignment="center")
+        left.markdown(f'<div class="lead">{lead}</div>', unsafe_allow_html=True)
+        with body:
+            if clickable:
+                open_button(uid, title, artist_key)
+            else:
+                st.markdown(f"**{e(title)}**")
+            st.markdown(
+                f'<div class="meta">{e(meta)}</div><div class="facts">{facts_html}</div>'
+                + (f'<div class="why">{e(why)}</div>' if why else ""),
+                unsafe_allow_html=True,
+            )
+        if url and url.startswith("https://"):
+            right.markdown(
+                f'<a class="cta" href="{e(url, quote=True)}" target="_blank" rel="noopener">'
+                f"{cta}</a>",
+                unsafe_allow_html=True,
+            )
 
 
-def show_item(show):
+def show_item(uid, show, clickable=True):
     day = dt.date.fromisoformat(show["event_date"])
     lead = (
         f'<div class="top">{day:%b}</div><div class="big">{day.day}</div>'
@@ -171,15 +217,15 @@ def show_item(show):
     where = venue if city in venue else f"{venue}, {city}"
     meta = " · ".join(p for p in (where, clock(show["local_time"])) if p)
     status = show.get("ticket_status", "unknown")
+    price = (
+        (f"{show['min_price']:.0f} {show['currency'] or ''}".strip(), "")
+        if show["price_known"]
+        else ("Price not listed", "warn")
+    )
     facts = [
         (f"Opening for {show['headliner']}" if show["role"] == "support" else "Headliner", ""),
-        (status, "hot" if status in NEEDS_ATTENTION else ""),
-        (
-            f"{show['min_price']:.0f} {show['currency'] or ''}".strip()
-            if show["price_known"]
-            else "Price not listed",
-            "",
-        ),
+        (status, "warn" if status in NEEDS_ATTENTION else ""),
+        price,
     ]
     if show.get("breakout_score") is not None:
         facts.append((f"Breakout {show['breakout_score']:.0f}", ""))
@@ -188,32 +234,186 @@ def show_item(show):
         why = why.removeprefix(f"opening for {show['headliner']}").removeprefix("; ")
     if show.get("ticket_note") and status != "on sale":
         why = f"{why}. {show['ticket_note']}" if why else show["ticket_note"]
-    item(lead, show["artist_name"], meta, facts, why, "Tickets", show["ticket_url"])
+    uid = f"{uid}-{show['event_id']}-{show['artist_key']}"
+    item(uid, lead, show["artist_name"], show["artist_key"], meta, facts, why, "Tickets",
+         show["ticket_url"], clickable)  # fmt: skip
 
 
-def artist_item(rank, artist):
+def lastfm_url(name):
+    return f"https://www.last.fm/music/{quote_plus(name)}"
+
+
+def artist_item(uid, rank, artist):
     facts = [
-        (f"Breakout {artist['breakout_score']:.0f}", "hot"),
+        (f"Breakout {artist['breakout_score']:.0f}", ""),
         (f"Listeners {pct(artist['listeners_7d_growth_pct'])} / 7 days", ""),
     ]
     if artist.get("your_plays"):
         facts.append((f"You've played them {artist['your_plays']}x", ""))
     meta = f"{listeners(artist['lastfm_listeners'])} · {artist['genres'] or 'no tags'}"
-    url = f"https://www.last.fm/music/{quote_plus(artist['name'])}"
     lead = f'<div class="top">No.</div><div class="big">{rank:02d}</div>'
-    item(lead, artist["name"], meta, facts, artist["because"], "Listen", url)
+    item(f"{uid}-{rank}", lead, artist["name"], artist["artist_key"], meta, facts,
+         artist["because"], "Listen", lastfm_url(artist["name"]))  # fmt: skip
 
 
-def table(rows, columns):
-    """A plain ranked list. columns: (header, key, numeric)."""
-    head = "".join(f"<th>{e(h)}</th>" for h, _, _ in columns)
-    body = "".join(
-        "<tr>"
-        + "".join(f'<td class="{"n" if num else ""}">{e(str(r[k]))}</td>' for _, k, num in columns)
-        + "</tr>"
-        for r in rows
+def table(uid, rows, columns, widths):
+    """A ranked list whose artist names open profiles. columns: (header, key, kind), kind is
+    "n" (number), "t" (text) or "artist" (needs name + artist_key in the row)."""
+    with st.container(key=f"tbl-{uid}"):
+        with st.container(key=f"head-{uid}"):
+            for col, (header, _, _) in zip(st.columns(widths), columns, strict=True):
+                col.markdown(f'<div class="th">{e(header)}</div>', unsafe_allow_html=True)
+        for i, r in enumerate(rows):
+            with st.container(key=f"row-{uid}-{i}"):
+                cells = st.columns(widths, vertical_alignment="center")
+                for col, (_, k, kind) in zip(cells, columns, strict=True):
+                    with col:
+                        if kind == "artist":
+                            open_button(f"{uid}-{i}", r["name"], r.get("artist_key"))
+                        else:
+                            css = "td n" if kind == "n" else "td"
+                            st.markdown(f'<div class="{css}">{e(str(r[k]))}</div>',
+                                        unsafe_allow_html=True)  # fmt: skip
+
+
+# --- artist profile (opens over the page) ------------------------------------------------------
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def profile_data(artist_key):
+    return ar_data.artist_profile(artist_key=artist_key)
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def artist_shows(artist_key, city, country):
+    live = live_events.for_city(city, country, 90)
+    return ar_data.upcoming_shows(
+        city=city, days_ahead=90, artist_keys=[artist_key], limit=20, live=live
     )
-    st.markdown(f'<table class="list"><tr>{head}</tr>{body}</table>', unsafe_allow_html=True)
+
+
+INK, MUTED, ACCENT, GRID = "#1C1B18", "#6E685D", "#C8401E", "#E2DBCD"
+BREAK_DAYS = 3  # a gap longer than this is drawn dashed: no data, not a trend
+
+
+def history_chart(points):
+    """Daily Last.fm listeners: a solid line where we have days, dashed across a pause."""
+    df = pd.DataFrame(points)
+    df["date"] = pd.to_datetime(df["date"])
+    gap = df["date"].diff().dt.days > BREAK_DAYS
+    df["run"] = gap.cumsum()
+    # Each pause becomes a pair of points: the last day before it and the first day after.
+    ends = df[gap.shift(-1, fill_value=False)].reset_index(drop=True)
+    starts = df[gap].reset_index(drop=True)
+    joins = pd.concat([ends.assign(pair=ends.index), starts.assign(pair=starts.index)])
+    x = alt.X("date:T", title=None, axis=alt.Axis(format="%b %d", grid=False, tickCount=6,
+              labelColor=MUTED, domainColor=GRID, tickColor=GRID))  # fmt: skip
+    y = alt.Y("listeners:Q", title=None, scale=alt.Scale(zero=False),
+              axis=alt.Axis(format="~s", gridColor=GRID, domain=False, ticks=False,
+                            labelColor=MUTED, tickCount=4))  # fmt: skip
+    hover = alt.selection_point(nearest=True, on="pointerover", fields=["date"], empty=False)
+    base = alt.Chart(df).encode(x=x, y=y)
+    layers = [
+        alt.Chart(joins).mark_line(color=MUTED, strokeDash=[4, 4], strokeWidth=1.5)
+        .encode(x=x, y=y, detail="pair:N"),
+        base.mark_line(color=ACCENT, strokeWidth=2).encode(detail="run:N"),
+        base.mark_rule(color=MUTED)
+        .encode(opacity=alt.condition(hover, alt.value(0.6), alt.value(0))),
+        base.mark_point(filled=True, size=64, color=ACCENT, stroke="#F4F0E8", strokeWidth=2)
+        .encode(
+            opacity=alt.condition(hover, alt.value(1), alt.value(0)),
+            tooltip=[alt.Tooltip("date:T", title="Date", format="%b %d, %Y"),
+                     alt.Tooltip("listeners:Q", title="Listeners", format=",")],
+        )
+        .add_params(hover),
+    ]  # fmt: skip
+    return (
+        alt.layer(*layers)
+        .properties(height=220)
+        .configure(background="transparent", font="IBM Plex Sans")
+        .configure_view(stroke=None)
+        .configure_axis(labelFont="IBM Plex Mono", labelFontSize=11)
+    )
+
+
+def open_profile(artist_key, name):
+    st.dialog(name, width="large")(profile_body)(artist_key, name)
+
+
+def profile_body(artist_key, name):
+    p = safe(profile_data, artist_key)
+    if not p:
+        return
+    s = p["signals"]
+    st.markdown(
+        f'<div class="meta">{e(listeners(s["lastfm_listeners"]))} · {e(s["size_band"] or "")}'
+        f" · {e(s['genres'] or 'no tags')}</div>",
+        unsafe_allow_html=True,
+    )
+    m1, m2, m3 = st.columns(3)
+    score = s["breakout_score"]
+    m1.metric("Breakout score", "n/a" if score is None else f"{score:.0f}")
+    m2.metric("Listeners, 7 days", pct(s["listeners_7d_growth_pct"]))
+    m3.metric("Listeners, 14 days", pct(s["listeners_14d_growth_pct"]))
+
+    st.subheader("Last.fm listeners")
+    if len(p["daily_listeners"]) >= 2:
+        st.altair_chart(history_chart(p["daily_listeners"]), theme=None, width="stretch")
+        for g in p["trend"].get("gaps", []):
+            if g["days"] > BREAK_DAYS:
+                st.caption(
+                    f"No data from {g['from']} to {g['to']}: daily collection was paused, so "
+                    "the dashed line only joins the two ends."
+                )
+    else:
+        st.caption("Not enough daily history yet for a chart.")
+
+    st.subheader(f"Shows in {city}")
+    with st.spinner(f"Searching Ticketmaster for shows in {city}"):
+        shows = safe(artist_shows, artist_key, city, country)
+    if shows is not None:
+        shows = with_ticket_status(shows)
+        if shows["shows"]:
+            price_note()
+            with st.container(key=f"list-dialog-{artist_key}"):
+                for show in shows["shows"]:
+                    show_item("dialog", show, clickable=False)
+        else:
+            st.markdown(
+                f"No upcoming {e(name)} shows in {e(city)} on Ticketmaster in the next 90 days."
+            )
+            st.caption(
+                "Source: Ticketmaster Discovery API. Small venues often sell through Dice, "
+                "Eventbrite or their own sites, so check the artist's own page too."
+            )
+    tracked = ar_data._fold(city) in {"toronto", "montreal"}
+    elsewhere = [
+        x
+        for x in p["upcoming_shows"]
+        if not tracked or ar_data._fold(x["city"]) != ar_data._fold(city)
+    ]  # noqa: E501
+    if elsewhere:
+        st.caption("Also on Ticketmaster in Toronto and Montréal:")
+        for x in elsewhere[:5]:
+            st.markdown(
+                f'<div class="elsewhere">{e(x["event_date"])} · {e(x["venue"] or "")}, '
+                f"{e(x['city'] or '')}</div>",
+                unsafe_allow_html=True,
+            )
+
+    brief = p.get("scout_brief")
+    if brief:
+        with st.expander(f"Scout brief ({brief['as_of_date']})"):
+            st.markdown(brief["brief_md"])
+    links = [("Last.fm", s.get("lastfm_url") or lastfm_url(name)),
+             ("Tour dates on Last.fm", f"{lastfm_url(name)}/+events")]  # fmt: skip
+    st.markdown(
+        " ".join(
+            f'<a class="cta" href="{e(u, quote=True)}" target="_blank" rel="noopener">{t}</a>'
+            for t, u in links
+        ),
+        unsafe_allow_html=True,
+    )
 
 
 # Tool-facing wording in the shared notes that means nothing on a web page.
@@ -278,8 +478,10 @@ with tab_shows:
                 f"{result['total_matches']} shows in {city} linked to your listening. "
                 f"Best {result['count']}:"
             )
-            for show in result["shows"]:
-                show_item(show)
+            price_note()
+            with st.container(key="list-shows"):
+                for show in result["shows"]:
+                    show_item("shows", show)
             if not result["shows"]:
                 st.info(
                     "Nothing in this window. Try more days ahead, another city, or no price cap."
@@ -297,8 +499,9 @@ with tab_discover:
         args = (user, genre.strip() or None, None if band.startswith("Any") else band, limit)
         result = safe(discover, *args)
         if result:
-            for rank, artist in enumerate(result["artists"], 1):
-                artist_item(rank, artist)
+            with st.container(key="list-discover"):
+                for rank, artist in enumerate(result["artists"], 1):
+                    artist_item("discover", rank, artist)
             if not result["artists"]:
                 st.info("No rising matches. Try a broader genre or another size.")
             notes(result)
@@ -320,24 +523,28 @@ with tab_taste:
             with left:
                 st.subheader("Your top artists")
                 rows = [
-                    {"n": i, "name": a["name"], "plays": a["your_playcount"],
-                     "size": a["size_band"] or "not tracked"}
+                    {"n": i, "name": a["name"], "artist_key": a["artist_key"],
+                     "plays": a["your_playcount"], "size": a["size_band"] or "not tracked"}
                     for i, a in enumerate(profile["top_artists"], 1)
                 ]  # fmt: skip
-                table(rows, [("#", "n", True), ("Artist", "name", False),
-                             ("Plays", "plays", True), ("Listeners", "size", False)])  # fmt: skip
+                table("top", rows, [("#", "n", "n"), ("Artist", "name", "artist"),
+                                    ("Plays", "plays", "n"), ("Listeners", "size", "t")],
+                      [0.5, 4, 1.4, 1.8])  # fmt: skip
             with right:
                 st.subheader("Your artists breaking now")
                 st.caption("Rising, under 1M listeners. Smaller and more-played rank higher.")
                 rows = [
-                    {"n": i, "name": a["name"], "score": f"{a['breakout_score']:.0f}",
-                     "size": listeners(a["lastfm_listeners"]), "plays": a["your_playcount"]}
+                    {"n": i, "name": a["name"], "artist_key": a["artist_key"],
+                     "score": f"{a['breakout_score']:.0f}",
+                     "size": listeners(a["lastfm_listeners"]).removesuffix(" listeners"),
+                     "plays": a["your_playcount"]}
                     for i, a in enumerate(profile["your_artists_breaking"], 1)
                 ]  # fmt: skip
                 if rows:
-                    table(rows, [("#", "n", True), ("Artist", "name", False),
-                                 ("Breakout", "score", True), ("Size", "size", False),
-                                 ("Your plays", "plays", True)])  # fmt: skip
+                    table("breaking", rows, [("#", "n", "n"), ("Artist", "name", "artist"),
+                                             ("Breakout", "score", "n"), ("Listeners", "size", "n"),
+                                             ("Plays", "plays", "n")],
+                          [0.5, 3.5, 1.4, 2.2, 1.4])  # fmt: skip
                 else:
                     st.info("None of your smaller artists are rising right now.")
             notes(profile)
@@ -356,20 +563,25 @@ with tab_rising:
     )
     if ranked:
         rows = [
-            {"n": i, "name": a["name"], "score": f"{a['breakout_score']:.0f}",
-             "size": a["size_band"], "growth": pct(a["listeners_7d_growth_pct"]),
-             "genres": a["genres"] or ""}
+            {"n": i, "name": a["name"], "artist_key": a["artist_key"],
+             "score": f"{a['breakout_score']:.0f}", "size": a["size_band"],
+             "growth": pct(a["listeners_7d_growth_pct"]), "genres": a["genres"] or ""}
             for i, a in enumerate(ranked["artists"], 1)
         ]  # fmt: skip
-        table(rows, [("#", "n", True), ("Artist", "name", False), ("Breakout", "score", True),
-                     ("Size", "size", False), ("Listeners, 7 days", "growth", True),
-                     ("Genres", "genres", False)])  # fmt: skip
+        st.caption("Click an artist for their listening history and shows.")
+        table("rising", rows, [("#", "n", "n"), ("Artist", "name", "artist"),
+                               ("Breakout", "score", "n"), ("Size", "size", "t"),
+                               ("7-day growth", "growth", "n"), ("Genres", "genres", "t")],
+              [0.5, 3, 1.2, 1.3, 1.6, 4])  # fmt: skip
         notes(ranked)
     st.subheader(f"Rising artists playing {city}")
     shows = safe(rising_shows, city, country)
     if shows:
-        for show in with_ticket_status(shows)["shows"]:
-            show_item(show)
+        if shows["shows"]:
+            price_note()
+        with st.container(key="list-rising"):
+            for show in with_ticket_status(shows)["shows"]:
+                show_item("rising", show)
         if not shows["shows"]:
             st.info(f"No rising artists (breakout 70+) playing {city} in the next 30 days.")
 

@@ -308,6 +308,7 @@ def taste_profile(client: LastFmClient, username: str, db=None) -> dict:
         "top_artists": [
             {
                 "name": s["name"],
+                "artist_key": s["artist_key"],
                 "your_playcount": s["plays"],
                 "tracked": bool(s["artist_key"]),
                 "size_band": taste.by_key[s["artist_key"]]["size_band"]

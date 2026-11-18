@@ -332,20 +332,30 @@ def trend_summary(points: list[dict]) -> dict:
     }
 
 
-def artist_profile(name: str, db: str | Path | None = None) -> dict:
-    match = find_artist(name, db)
-    if not match["matched"]:
-        return match
-    key = match["artist"]["artist_key"]
+def artist_profile(
+    name: str | None = None,
+    db: str | Path | None = None,
+    artist_key: str | None = None,  # internal (web app): an exact key, no name matching
+) -> dict:
+    if artist_key:
+        match, key = {"method": "key", "alternatives": []}, artist_key
+    else:
+        match = find_artist(name or "", db)
+        if not match["matched"]:
+            return match
+        key = match["artist"]["artist_key"]
     with connect(db) as con:
-        signals = _rows(
+        found = _rows(
             con,
             f"""SELECT {ARTIST_COLUMNS}, as_of_date, tags[1:10] AS tags, lastfm_playcount,
                 new_country_charts_14d, listener_growth_z, play_growth_z, history_days,
                 growth_window_days, stats_last_changed, on_tour, possible_alias_of
                 FROM artist_signals WHERE artist_key = ?""",
             [key],
-        )[0]
+        )
+        if not found:
+            raise QueryError(f"No tracked artist with key {key!r}", "Search by name instead.")
+        signals = found[0]
         history = _rows(
             con,
             """SELECT snapshot_date, lastfm_listeners, listeners_change

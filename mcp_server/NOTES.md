@@ -259,3 +259,21 @@ on top of the existing functions and was already on the README's roadmap. Choice
   - warm paper with ink and one vermilion accent, square corners and a dark sidebar;
   - shows laid out as gig listings with a date block, plain ranked tables instead of data
     grids, and no Deploy toolbar.
+
+**Step 11, artist profiles and honest prices.**
+- *Click any artist* in a list or table to open a profile over the page. It shows:
+  - breakout score and 7- and 14-day growth;
+  - a chart of daily Last.fm listeners;
+  - shows in the selected city over the next 90 days (live for any city), with ticket status;
+  - Toronto/Montréal dates elsewhere, the scout brief, and Last.fm links.
+
+  An empty result names its source: "No upcoming shows in X on Ticketmaster", plus the caveat
+  that small rooms sell elsewhere. `ar_data.artist_profile` gained an internal `artist_key`
+  so the app never fuzzy-matches a name it already knows.
+- *The chart doesn't hide the outage.* Days with data are a solid line. A pause over 3 days
+  (Oct 18 to Nov 18) is a dashed grey join with a caption saying there's no data there, so
+  the month-long catch-up doesn't read as a trend.
+- *Missing prices are flagged.* "Price not listed" is a red tag even on the top-ranked show,
+  since those are usually big-room shows. A note above every show list says prices come from
+  Ticketmaster's public API, which often leaves them out (it gives no reason) and can be stale
+  or exclude fees.
