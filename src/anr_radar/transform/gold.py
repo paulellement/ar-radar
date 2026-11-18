@@ -220,7 +220,8 @@ def build_upcoming_shows(spark, t: Tables) -> None:
         JOIN {t("silver", "event_artist_match")} m
           ON m.attraction_id = p.attraction_id AND m.match_method IN ('mbid', 'exact', 'fuzzy')
         LEFT JOIN {t("gold", "artist_signals")} s ON s.artist_key = m.artist_key
-        WHERE e.event_date >= current_date() AND e.status <> 'cancelled'
+        WHERE e.event_date >= current_date()
+          AND e.status NOT IN ('canceled', 'cancelled')  -- Ticketmaster's code is "canceled"
     """)
     set_comments(spark, table, UPCOMING_COMMENT, UPCOMING_COLUMNS)
 
