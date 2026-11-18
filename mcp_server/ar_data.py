@@ -61,9 +61,17 @@ def _tag_match(col: str = "tags") -> str:
 # One row per show: the bill in order, so a support slot can name its headliner.
 LINEUP_JOIN = """LEFT JOIN (
     SELECT event_id, list(performer_name ORDER BY billing_order) AS bill
-    FROM event_performers GROUP BY event_id) lu USING (event_id)"""
+    FROM {performers} GROUP BY event_id) lu USING (event_id)"""
 LINEUP_COLUMNS = """CASE WHEN {t}is_headliner THEN 'headliner' ELSE 'support' END AS role,
     lu.bill[1] AS headliner, lu.bill[1:6] AS lineup, len(lu.bill) AS lineup_size"""
+
+
+# A live city search (live_events) shaped like the snapshot's upcoming_shows table.
+LIVE_SHOWS = """(SELECT e.*, m.artist_key, coalesce(a.name, m.artist_name) AS artist_name,
+        m.billing_order = 0 AS is_headliner, a.breakout_score, a.size_band,
+        a.lastfm_listeners, a.genres, a.listeners_7d_growth_pct
+    FROM live_events e JOIN live_matches m USING (event_id)
+    LEFT JOIN artist_signals a USING (artist_key))"""
 
 
 class QueryError(ValueError):
@@ -356,7 +364,8 @@ def artist_profile(name: str, db: str | Path | None = None) -> dict:
             f"""SELECT event_date, local_time, city, venue, event_name, min_price, max_price,
                       currency, ticket_url, event_id, status,
                       min_price IS NOT NULL AS price_known, {LINEUP_COLUMNS.format(t="")}
-               FROM upcoming_shows {LINEUP_JOIN} WHERE artist_key = ? AND event_date >= ?
+               FROM upcoming_shows {LINEUP_JOIN.format(performers="event_performers")}
+               WHERE artist_key = ? AND event_date >= ?
                ORDER BY event_date LIMIT ?""",
             [key, max(_as_of(con), _today()), MAX_LIMIT],
         )
@@ -388,6 +397,7 @@ def upcoming_shows(
     db: str | Path | None = None,
     artist_keys: list[str] | None = None,  # internal (personal.shows_for_me), not a tool arg
     max_rows: int | None = None,  # internal: personal ranking re-sorts every match itself
+    live: dict | None = None,  # internal: a live city search (live_events.for_city)
 ) -> dict:
     if not 1 <= days_ahead <= config.EVENT_HORIZON_DAYS:
         horizon = config.EVENT_HORIZON_DAYS
@@ -406,12 +416,19 @@ def upcoming_shows(
         where = ["u.event_date BETWEEN ? AND ?"]
         params: list = [start, until]
         filters: dict = {"days_ahead": days_ahead}
-        if city and city.strip():
-            rows = con.execute("SELECT DISTINCT city FROM upcoming_shows").fetchall()
-            cities = sorted(c for (c,) in rows if c)
-            hits = [c for c in cities if _fold(c) == _fold(city)]
+        shows_table, performers = "upcoming_shows", "event_performers"
+        if live is not None:
+            # Same query over the live search's tables (already one city), shaped like the
+            # snapshot's upcoming_shows by joining the tracked artists' signals.
+            for name in ("events", "performers", "matches"):
+                con.register(f"live_{name}", live[name])
+            shows_table, performers = LIVE_SHOWS, "live_performers"
+            filters["city"] = live["city"]
+        elif city and city.strip():
+            hits = tracked_city_names(con, city)
             if not hits:
-                raise QueryError(f"No shows tracked in {city!r}", f"Cities: {', '.join(cities)}")
+                cities = ", ".join(tracked_city_names(con))
+                raise QueryError(f"No shows tracked in {city!r}", f"Cities: {cities}")
             # Ticketmaster spells one city several ways ("Montréal" and "Montreal"): keep all.
             filters["city"] = hits[0] if len(hits) == 1 else hits
             where.append("list_contains(?, u.city)")
@@ -436,7 +453,7 @@ def upcoming_shows(
             filters["genre"] = genre.strip()
             where.append(_tag_match("s.tags"))
             params.append(filters["genre"])
-        tables = "upcoming_shows u LEFT JOIN artist_signals s USING (artist_key)"
+        tables = f"{shows_table} u LEFT JOIN artist_signals s USING (artist_key)"
         condition = " AND ".join(where)
         # Totals beyond the row limit: most shows have no price, so the top rows by score can
         # hide the few with a confirmed cheap ticket. Tell the model they exist.
@@ -451,12 +468,20 @@ def upcoming_shows(
                        u.max_price, u.currency, u.ticket_url, u.event_id, u.status,
                        u.min_price IS NOT NULL AS price_known,
                        {LINEUP_COLUMNS.format(t="u.")}
-                FROM {tables} {LINEUP_JOIN}
+                FROM {tables} {LINEUP_JOIN.format(performers=performers)}
                 WHERE {condition}
                 ORDER BY u.breakout_score DESC NULLS LAST, u.event_date LIMIT ?""",
             [*params, max_rows or _cap(limit)],
         )
-        notes = ["Prices are CAD. price_known=false means no listed price, not free."]
+        if live is None:
+            notes = ["Prices are CAD. price_known=false means no listed price, not free."]
+        else:
+            notes = [
+                f"Searched live on Ticketmaster for {live['city']}. Prices are in each show's "
+                "currency; price_known=false means no listed price, not free.",
+                "Outside Toronto and Montréal only artists we already track can appear, so "
+                "this is rising artists touring through, not the local scene.",
+            ]
         notes += data_notes(con)
     if (until - as_of).days > config.EVENT_HORIZON_DAYS:
         notes.append(f"Shows were collected up to {config.EVENT_HORIZON_DAYS} days after {as_of}.")
@@ -470,6 +495,13 @@ def upcoming_shows(
         "shows": shows,
         "notes": notes,
     }
+
+
+def tracked_city_names(con, city: str | None = None) -> list[str]:
+    """Snapshot city spellings, all or those matching `city` ("Montreal" ~ "Montréal")."""
+    rows = con.execute("SELECT DISTINCT city FROM upcoming_shows").fetchall()
+    cities = sorted(c for (c,) in rows if c)
+    return cities if city is None else [c for c in cities if _fold(c) == _fold(city)]
 
 
 # --- 5. freshness -------------------------------------------------------------------------

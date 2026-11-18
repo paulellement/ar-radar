@@ -18,11 +18,9 @@ from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
 import ar_data
+import live_events
 import personal
 import tickets
-from anr_radar import config
-from anr_radar.clients.lastfm import LastFmClient
-from anr_radar.secrets import get_secret
 
 logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(asctime)s %(message)s")
 log = logging.getLogger("ar-radar")
@@ -32,7 +30,8 @@ mcp = MCPServer(
     name="ar-radar",
     instructions=(
         "A&R Radar: artists growing unusually fast for their size (Last.fm) and their upcoming "
-        "Toronto/Montreal shows (Ticketmaster). Data is a daily snapshot: call data_status "
+        "shows (Ticketmaster): Toronto/Montreal from a daily snapshot, any other city searched "
+        "live. Rankings are a daily snapshot: call data_status "
         "before saying 'today' or 'this week'. It flags growth; never say an artist will break. "
         "Read ar-radar://limitations before writing a report. Fields ending in _pct are "
         "already percentages: 0.21 means +0.21%, not +21%. Personal tools (my_*, *_for_me) "
@@ -44,19 +43,15 @@ mcp = MCPServer(
 # (personal taste, ticket status) are marked open-world.
 READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False, open_world_hint=False)
 READS_LIVE = ToolAnnotations(read_only_hint=True, destructive_hint=False, open_world_hint=True)
-_lastfm: LastFmClient | None = None
 _ticket_fetch = tickets.fetch_events  # swapped out in tests: no network
+_city_search = None  # tests swap in a fake live city search; None = Ticketmaster
 
 
 def _with_tickets(result: dict[str, Any], key: str = "shows") -> dict[str, Any]:
     """Add live ticket status (on sale / off sale / ...) to every show; drop canceled ones."""
     if "error" in result or not result.get(key):
         return result
-    try:
-        api_key = get_secret("TICKETMASTER_API_KEY", "ticketmaster_key")
-    except RuntimeError:
-        api_key = None  # shows still come back, marked "unknown"
-    return tickets.annotate(result, api_key, fetch=_ticket_fetch, key=key)
+    return tickets.annotate(result, tickets.api_key(), fetch=_ticket_fetch, key=key)
 
 
 def _call(fn, **kwargs) -> dict[str, Any]:
@@ -125,10 +120,11 @@ def upcoming_shows(
     genre: str | None = None,
     require_price: bool = False,
     limit: int = 20,
+    country_code: str | None = None,
 ) -> dict[str, Any]:
-    """Upcoming concerts (Toronto and Montreal only) by tracked artists, highest breakout
-    score first. Use for "cheap shows near me", "who should I go see", "rising artists playing
-    this month". If the user says "near me" without a city, ask which city.
+    """Upcoming concerts by tracked artists, highest breakout score first. Use for "cheap
+    shows near me", "who should I go see", "rising artists playing this month". If the user
+    says "near me" without a city, ask which city.
 
     Every show has role ("headliner" or "support"), headliner and lineup: always say when the
     artist is only opening ("opening for Bonobo"), since it's mainly the headliner's show.
@@ -137,8 +133,13 @@ def upcoming_shows(
     "sales closed", "rescheduled", "postponed" or "unknown". Canceled shows are removed.
 
     Args:
-        city: "Toronto" or "Montreal" (accents optional).
-        max_price: highest acceptable minimum ticket price, in CAD. Shows with no listed price
+        city: any city Ticketmaster sells in. Toronto and Montreal come from the daily
+            snapshot, including small local acts; any other city is searched live (a few
+            seconds) and only lists artists we already track, i.e. rising acts touring
+            through. Omit for Toronto + Montreal together.
+        country_code: two-letter code for an ambiguous city name ("GB" for London, England).
+        max_price: highest acceptable minimum ticket price, in CAD (local currency for a
+            live-searched city). Shows with no listed price
             are kept and marked price_known=false; mention that rather than calling them free.
         days_ahead: window length, 1-90 (default 30). It starts today (or at the snapshot
             date if that is later), so shows that already happened are never returned.
@@ -149,9 +150,14 @@ def upcoming_shows(
             cheap shows aren't crowded out.
         limit: rows to return, max 50. total_matches says how many matched in all.
     """
+
+    def run(**kwargs):
+        return ar_data.upcoming_shows(live=_live(city, country_code, days_ahead), **kwargs)
+
+    run.__name__ = "upcoming_shows"
     return _with_tickets(
         _call(
-            ar_data.upcoming_shows,
+            run,
             city=city,
             max_price=max_price,
             days_ahead=days_ahead,
@@ -170,17 +176,13 @@ def data_status() -> dict[str, Any]:
     return _call(ar_data.snapshot_info)
 
 
-def _client() -> LastFmClient:
-    global _lastfm
-    if _lastfm is None:
-        try:  # .env locally (also loads LASTFM_USERNAME), secret scope on Databricks
-            key = get_secret("LASTFM_API_KEY", "lastfm_key")
-        except RuntimeError as e:
-            raise ar_data.QueryError(
-                "Last.fm API key not configured", "Set LASTFM_API_KEY in .env."
-            ) from e  # noqa: E501
-        _lastfm = LastFmClient(key, requests_per_sec=config.LASTFM_REQUESTS_PER_SEC)
-    return _lastfm
+def _live(city: str | None, country_code: str | None, days_ahead: int) -> dict | None:
+    """None for the snapshot cities, else a live Ticketmaster search of that city."""
+    return live_events.for_city(city, country_code, days_ahead, search=_city_search)
+
+
+def _client():
+    return personal.client()  # a function here so tests can swap in a fake
 
 
 def _personal(fn, username: str | None, **kwargs) -> dict[str, Any]:
@@ -242,12 +244,14 @@ def shows_for_me(
     who: Literal["any", "mine", "new"] = "any",
     prefer_cheap: bool = False,
     limit: int = 10,
+    country_code: str | None = None,
 ) -> dict[str, Any]:
-    """Upcoming Toronto/Montreal shows picked for the user: artists they play (they may not
-    know about the show) and artists that fit their taste, scored together. Each show has
-    `why`, `rank_score` and `score_parts`. Same city, price (CAD; price_known=false means
-    unlisted), date, role/headliner and live ticket_status rules as upcoming_shows; opening
-    slots rank lower (billing 0.8) and their `why` starts "opening for <headliner>".
+    """Upcoming shows picked for the user: artists they play (they may not know about the
+    show) and artists that fit their taste, scored together. Each show has `why`,
+    `rank_score` and `score_parts`. Same city / country_code, price (CAD, or local currency
+    for a live-searched city; price_known=false means unlisted), date, role/headliner and live
+    ticket_status rules as upcoming_shows. Opening slots rank lower (billing 0.8) and their
+    `why` starts "opening for <headliner>".
 
     Set the knobs from the user's wording. Nothing is excluded; they only shift the ranking:
         who: "mine" leans on artists they play a lot ("a show by an artist I listen to");
@@ -258,9 +262,16 @@ def shows_for_me(
     Examples: "cheap show by an artist I listen to" -> who="mine", prefer_cheap=True.
     "a new artist that's cheap" -> who="new", prefer_cheap=True. "any shows for me" -> defaults.
     """
+
+    def run(client, user, **kwargs):
+        return personal.shows_for_me(
+            client, user, live=_live(city, country_code, days_ahead), **kwargs
+        )
+
+    run.__name__ = "shows_for_me"
     return _with_tickets(
-        _personal(personal.shows_for_me, username, city=city, max_price=max_price,
-                  days_ahead=days_ahead, who=who, prefer_cheap=prefer_cheap, limit=limit)
+        _personal(run, username, city=city, max_price=max_price, days_ahead=days_ahead,
+                  who=who, prefer_cheap=prefer_cheap, limit=limit)
     )  # fmt: skip
 
 

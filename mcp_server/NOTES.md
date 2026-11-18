@@ -217,3 +217,45 @@ The candidate pool is small (7 shows), which is a coverage limit of the similar-
   but Ticketmaster spells it "canceled", so canceled shows could reach the gold table. Fixed in
   `transform/gold.py`; it needs a bundle deploy to take effect. The live check covers it
   meanwhile.
+
+**Step 9, local web app (`app/`, Streamlit).** Streamlit was chosen because it's pure Python
+on top of the existing functions and was already on the README's roadmap. Choices:
+- *No AI in the main tabs.* Shows for me, Discover, My taste and Rising now call
+  `personal.py`, `ar_data.py` and `tickets.py` directly: no LLM, $0, about 7 s on first load
+  (Last.fm plus ranking) and 0.1 s after, because results are cached for 10 minutes.
+- *Chat at $0.* It runs `claude -p` with the ar-radar MCP server on Paul's subscription,
+  with built-in tools disabled (`--tools ""`), so browser input can only reach the read-only
+  tools. It streams tool progress into the UI and continues the conversation with
+  `--resume`. A real test took 15 s for the first answer and 5 s for a follow-up.
+- *Local only.* `.streamlit/config.toml` binds to localhost (the chat spends the
+  subscription) and turns off Streamlit's usage telemetry.
+- *Hosting later.* Swapping `chat.ask` for the Claude API is the only change needed.
+- *Shared setup.* The Last.fm client and Ticketmaster key now live in `personal.client()` and
+  `tickets.api_key()`, used by both the server and the app.
+- *Tests.* The chat runner is tested with a fake process; the whole app is tested headless
+  (Streamlit AppTest) on the fixture snapshot with fake Last.fm and Ticketmaster.
+
+**Step 10, any city, a less generic look, and "breaking" means small.**
+- *Any city without Databricks.* A new city doesn't need a pipeline run.
+  `live_events.for_city` does one Ticketmaster search (Chicago 2 s, London 5 s, Berlin under
+  1 s; cached an hour) and matches performers with the pipeline's own `match_performers`.
+  `ar_data.upcoming_shows(live=...)` then runs the same SQL over the live tables, shaped like
+  the snapshot by joining `artist_signals`, so ranking, roles and filters are identical.
+  The search results also seed the ticket-status cache, so there's no second request.
+  - The trade-off: only tracked artists can be ranked, and the pipeline only adds local acts
+    for Toronto and Montréal. A new city shows rising artists touring through, not its scene.
+  - Adding a city to `config.EVENT_CITIES` gives it the full treatment: a few Ticketmaster
+    calls plus Last.fm lookups for its new performers in the daily run.
+  - The MCP tools take any city plus an optional `country_code` for ambiguous names
+    (London, GB).
+- *Your artists breaking.* Paul's list was all 500k-2M artists (Omar Apollo, Car Seat
+  Headrest): growing fast for their size, but long established. Now 1M+ listeners is out,
+  and the rest rank by breakout × smallness (log scale) × (0.25 + 0.75 × familiarity). His
+  list became Anish Kumar, Angela Autumn, BUNT., Gus Dapperton and Rico Nasty, and a note
+  counts the 82 established ones left out.
+- *Design.* Paul found the first version looked AI-generated. Changes:
+  - no emojis (a test checks);
+  - IBM Plex Sans and Mono with Archivo Narrow headings;
+  - warm paper with ink and one vermilion accent, square corners and a dark sidebar;
+  - shows laid out as gig listings with a date block, plain ranked tables instead of data
+    grids, and no Deploy toolbar.

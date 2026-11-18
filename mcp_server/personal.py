@@ -18,9 +18,11 @@ import time
 from collections import defaultdict
 
 import ar_data
+from anr_radar import config
 from anr_radar.clients.lastfm import LastFmClient, LastFmError, NotFound
 from anr_radar.keys import artist_key
 from anr_radar.matching.names import normalize
+from anr_radar.secrets import get_secret
 from ar_data import QueryError
 
 log = logging.getLogger("ar-radar.personal")
@@ -32,10 +34,26 @@ LIVE_SIMILAR_SEEDS = 10  # heavy seeds we don't track: ask Last.fm for their sim
 RISING = 70.0
 SIM_WEIGHT, TAG_WEIGHT = 0.7, 0.3
 EMERGING_BANDS = {"<10k", "10k-50k", "50k-500k"}
+# "Your artists breaking": an artist with 1M+ listeners is established, however fast they grow.
+# Below that, smaller ranks higher on a log scale (SMALL_FLOOR or fewer listeners = 1).
+ESTABLISHED, SMALL_FLOOR = 1_000_000, 10_000
 JUNK_TAGS = {"seen live", "favorites", "favourites", "favorite", "fav", "love", "albums i own"}
 USERNAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{1,14}$")  # Last.fm's username rules
 
 _cache: dict[tuple, tuple[float, object]] = {}
+_client: LastFmClient | None = None
+
+
+def client() -> LastFmClient:
+    """The shared Last.fm client (MCP server and web app). Key from .env or the secret scope."""
+    global _client
+    if _client is None:
+        try:
+            key = get_secret("LASTFM_API_KEY", "lastfm_key")
+        except RuntimeError as e:
+            raise QueryError("Last.fm API key not configured", "Set LASTFM_API_KEY in .env.") from e
+        _client = LastFmClient(key, requests_per_sec=config.LASTFM_REQUESTS_PER_SEC)
+    return _client
 
 
 def _cached(key: tuple, fetch):
@@ -269,18 +287,19 @@ def taste_profile(client: LastFmClient, username: str, db=None) -> dict:
         if (taste.by_key[key]["breakout_score"] or 0) >= RISING
         and not taste.by_key[key]["possible_alias_of"]
     ]
-    # Same rule as the rankings: superstars (2M+) "growing fast for their size" isn't being
-    # early, so they're left out of this list and counted in a note instead.
-    breaking = [a for a in rising if a["size_band"] != ar_data.SUPERSTAR_BAND]
-    # Order by how much they're yours as well as how hard they're breaking, so an artist you
-    # played once in passing sinks instead of topping "your" list.
-    breaking.sort(
-        key=lambda a: -(0.5 * taste.familiarity(a["artist_key"]) + 0.5 * a["breakout_score"] / 100)
-    )
+    # Growing fast for their size isn't "breaking" once an artist has 1M+ listeners: rank the
+    # rest by breakout x smallness x how much they're yours. One play in passing still counts
+    # a quarter, so a small artist you only just found isn't buried, but a favourite leads.
+    for a in rising:
+        fam = taste.familiarity(a["artist_key"])
+        a["rank_score"] = round(
+            a["breakout_score"] / 100 * smallness(a["lastfm_listeners"]) * (0.25 + 0.75 * fam), 3
+        )
+    breaking = sorted((a for a in rising if a["rank_score"] > 0), key=lambda a: -a["rank_score"])
     if len(rising) > len(breaking):
         notes.append(
-            f"{len(rising) - len(breaking)} of your 2M+ artists also score >= {RISING:.0f}; "
-            "left out of your_artists_breaking (superstars)."
+            f"{len(rising) - len(breaking)} more of your artists score >= {RISING:.0f} but "
+            f"already have {ESTABLISHED / 1e6:.0f}M+ listeners; left out as established."
         )
     return {
         "username": username,
@@ -389,7 +408,9 @@ def shows_for_me(
     prefer_cheap=False,
     limit=10,
     db=None,
+    live=None,
 ) -> dict:
+    """live: a live city search (live_events.for_city) for cities outside the snapshot."""
     if who not in WHO:
         raise QueryError(
             f"who must be one of {', '.join(WHO)}", "'mine' leans on artists they play."
@@ -400,7 +421,7 @@ def shows_for_me(
     # artists as similar. Not tag-only matches: sharing "pop" or "indie" with your profile
     # flooded the list with rising acts that had almost nothing to do with you.
     result = ar_data.upcoming_shows(
-        city=city, max_price=max_price, days_ahead=days_ahead, max_rows=5000, db=db
+        city=city, max_price=max_price, days_ahead=days_ahead, max_rows=5000, db=db, live=live
     )
     weights = show_weights(who, prefer_cheap)
     shows = []
@@ -436,6 +457,14 @@ def shows_for_me(
     result["username"] = username
     result["notes"] = taste.notes() + result["notes"]
     return result
+
+
+def smallness(listeners: int | None) -> float:
+    """0-1, log scale: SMALL_FLOOR listeners or fewer = 1, ESTABLISHED or more = 0."""
+    if not listeners:
+        return 0.0
+    span = math.log(ESTABLISHED / SMALL_FLOOR)
+    return min(1.0, max(0.0, math.log(ESTABLISHED / listeners) / span))
 
 
 def _artist(a: dict) -> dict:

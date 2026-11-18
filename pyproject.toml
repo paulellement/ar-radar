@@ -17,7 +17,7 @@ dev = [
     "pytest>=8",
     "responses>=0.25",
     "ruff>=0.6",
-    "anr_radar[mcp]",
+    "anr_radar[mcp,app]",
 ]
 # Agent access: the MCP server in mcp_server/ (see mcp_server/NOTES.md).
 mcp = [
@@ -26,6 +26,11 @@ mcp = [
     "pandas>=2.2",
     "pyarrow>=16",
     "python-dotenv>=1.0",  # loads LASTFM_API_KEY / LASTFM_USERNAME from .env
+]
+# Local web app: streamlit run app/streamlit_app.py
+app = [
+    "anr_radar[mcp]",
+    "streamlit>=1.50",
 ]
 
 [project.scripts]
@@ -42,13 +47,13 @@ build-backend = "hatchling.build"
 packages = ["src/anr_radar"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "mcp_server/tests"]
-pythonpath = ["mcp_server", "mcp_server/tests"]
+testpaths = ["tests", "mcp_server/tests", "app/tests"]
+pythonpath = ["mcp_server", "mcp_server/tests", "app"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-src = ["src", "mcp_server", "mcp_server/tests"]  # first-party for import sorting
+src = ["src", "mcp_server", "mcp_server/tests", "app"]  # first-party for import sorting
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]

@@ -56,8 +56,8 @@ def test_taste_profile(db):
     assert p["coverage"] == 0.5
     assert p["total_scrobbles"] == 12345
     assert "indie pop" in p["top_tags"]
-    assert names(p["your_artists_breaking"]) == ["Phoebe Bridgers"]  # Spoons scores 40
-    assert p["your_artists_breaking"][0]["your_playcount"] == 500
+    assert p["your_artists_breaking"] == []  # Phoebe is 1M+ (established), Spoons scores 40
+    assert any("1M+" in n for n in p["notes"])
     assert 0 < p["emerging_share"] < 1  # Spoons (<10k) counts, Phoebe (500k-2M) doesn't
 
 
@@ -139,13 +139,24 @@ def test_real_client_end_to_end(db, monkeypatch):
     assert names(personal.discover(client, "testfan", db=db)["artists"])[0] == "CHXRRY"
 
 
-def test_superstars_are_not_your_artists_breaking(db):
-    top = {
-        "overall": [*TOP["overall"], {"name": "Big Star Canada", "mbid": "bs", "playcount": "90"}]
-    }  # noqa: E501
-    p = personal.taste_profile(FakeLastFm(top=top), "starfan", db=db)
-    assert "Big Star Canada" not in names(p["your_artists_breaking"])  # 2M+, score 98
-    assert any("2M+" in n for n in p["notes"])
+def test_your_artists_breaking_favours_small_and_well_played(db):
+    extra = [
+        {"name": "Big Star Canada", "mbid": "bs", "playcount": "90"},  # 5M listeners
+        {"name": "Florence Road", "mbid": "fr", "playcount": "40"},  # 30k
+        {"name": "Maple Kid", "mbid": "", "playcount": "2"},  # 12k, but barely played
+    ]
+    p = personal.taste_profile(FakeLastFm(top={"overall": [*TOP["overall"], *extra]}), "fan", db=db)
+    breaking = p["your_artists_breaking"]
+    assert names(breaking) == ["Florence Road", "Maple Kid"]  # no Phoebe (1.5M), no Big Star
+    assert breaking[0]["rank_score"] > breaking[1]["rank_score"] > 0
+    assert any("2 more" in n and "1M+" in n for n in p["notes"])
+
+
+def test_smallness_is_a_log_scale():
+    assert personal.smallness(5_000) == 1.0
+    assert personal.smallness(100_000) == pytest.approx(0.5)
+    assert personal.smallness(1_000_000) == personal.smallness(3_000_000) == 0.0
+    assert personal.smallness(None) == 0.0
 
 
 def test_prefer_cheap_lifts_listed_low_prices(db):

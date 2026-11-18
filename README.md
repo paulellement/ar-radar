@@ -39,7 +39,7 @@ Last.fm API ──────┘   (daily job)      └────────
 - **Daily Databricks Job:** pulls upcoming concerts, snapshots every tracked artist on Last.fm, then rebuilds the bronze → silver → gold tables and runs data-quality checks. Last.fm only reports current totals, so these daily snapshots *are* the history.
 - **Breakout score:** log growth over 7 and 14 days, turned into a robust z-score (median/MAD) within listener-size bands, soft-capped, and combined into a percentile.
 - **Scout briefs:** `ai_query` on a Databricks-hosted model (gpt-oss-120b, Llama 3.3 as fallback), with each brief's exact prompt stored so every claim can be checked.
-- **Engineering:** Databricks Asset Bundles with separate dev and prod, 138 pytest tests, GitHub Actions CI, and quality checks that fail the job and send an alert.
+- **Engineering:** Databricks Asset Bundles with separate dev and prod, 154 pytest tests, GitHub Actions CI, and quality checks that fail the job and send an alert.
 
 ## Agent access (MCP)
 
@@ -57,7 +57,7 @@ Databricks gold tables ──export_snapshot.py──▶ mcp_server/data/ar_rada
 |---|---|
 | `top_breakout_artists` | ranks by breakout score; filters for country, genre tag, size band |
 | `artist_profile` | one artist: signals, 30-day trend (steady vs. one-day spike), scout brief, shows; asks when a name is ambiguous |
-| `upcoming_shows` | Toronto/Montréal shows by rising artists; filters for price, date window, genre, minimum score; headliner or opener, plus live ticket status |
+| `upcoming_shows` | shows by rising artists (Toronto/Montréal from the snapshot, any other city live); filters for price, date window, genre, minimum score; headliner or opener, plus live ticket status |
 | `data_status` | how fresh the snapshot is |
 | `my_taste_profile` | your Last.fm taste, and which of *your* artists are breaking now |
 | `discover_for_me` | rising artists you don't listen to yet, with "because you play X" |
@@ -90,6 +90,20 @@ To debug, run `npx @modelcontextprotocol/inspector .venv/bin/python mcp_server/s
 
 **Eval: 5/5.** Five scouting questions, with expected answers written in advance from direct SQL and run through Claude Code with only this server available (no shell or file access). Building the eval caught 3 data bugs, and one run caught a stale docstring that the model repeated to the user. A second eval with 3 personal questions on my own Last.fm account scored 2/3 on the first run (Claude read 0.21% growth as 21%) and 3/3 after stating the units in the tool descriptions. Building it also caught 3 bugs. Details are in [`mcp_server/eval_questions.md`](mcp_server/eval_questions.md).
 
+## Web app (local)
+
+`streamlit run app/streamlit_app.py` opens A&R Radar at http://localhost:8501. Enter a Last.fm username, then pick:
+
+- **Shows:** ranked by how well you know the artist, breakout score, emerging size and price. Each show says headliner or opener and has live ticket status.
+- **Discover:** rising artists new to you.
+- **Your taste:** your top artists and tags, and which of your smaller artists (under 1M listeners) are breaking now.
+- **Rising:** the general ranking, plus rising artists playing your city.
+- **Ask:** free-form questions.
+
+**Any city.** Toronto and Montréal come from the daily pipeline, which also scores their local acts. Type any other city and the app searches Ticketmaster live (1 to 5 seconds, cached for an hour, well inside the free 5,000 calls a day) and matches the performers to the tracked artists with the pipeline's own matcher. No Databricks run is needed per city. The catch: only already-tracked artists can be ranked, so a new city shows the rising artists touring through it, not its local scene.
+
+Every tab except Ask calls the same Python functions as the MCP server, with no AI and $0. Ask runs Claude Code on your machine with only the read-only A&R Radar tools, so it uses your Claude subscription. The app binds to localhost only.
+
 ## Limitations
 
 - Last.fm only counts people who log their listening there, and its users skew toward certain demographics and genres. It's one signal, not the whole picture.
@@ -102,7 +116,8 @@ To debug, run `npx @modelcontextprotocol/inspector .venv/bin/python mcp_server/s
 
 - Live: Daily pipeline, breakout score, shows, scout briefs, Aldous
 - Live: Read-only MCP server so Claude can query the results, with personal picks by Last.fm username
-- Future: Streamlit app (Shows, Ask Aldous, Radar and Artist tabs) and a demo video
+- Live (local): Streamlit app: enter a Last.fm username for shows, new artists and your taste, plus rising artists and a chat
+- Future: demo video
 - Future: Backtest of the breakout score once there are a few weeks/months of history
 
 ## Repo layout
@@ -112,6 +127,7 @@ src/anr_radar/     collectors, API clients, scoring, matching, transforms, brief
 resources/         Databricks job definitions (Asset Bundle)
 genie/             Aldous configuration and test log
 mcp_server/        MCP server, snapshot export, tests and eval (agent access)
+app/               local Streamlit web app on top of mcp_server/
 tests/             pytest suite
 ```
 
@@ -122,7 +138,7 @@ Requires a Databricks workspace (Free Edition works), a Last.fm API key and a Ti
 ```bash
 uv venv --python 3.12 && uv pip install -e ".[dev]"
 cp .env.example .env                  # add your API keys
-pytest                                # 138 tests (64 pipeline + 74 MCP)
+pytest                                # 154 tests (64 pipeline + 82 MCP + 8 app)
 databricks auth login
 ./scripts/setup_secrets.sh            # stores keys in a Databricks secret scope
 # run scripts/setup_uc.sql in the SQL editor, then:

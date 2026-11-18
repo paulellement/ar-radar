@@ -89,3 +89,15 @@ def test_shows_get_live_ticket_status_and_canceled_ones_drop(snapshot_env):
     assert "CHXRRY" not in names  # Ticketmaster now says canceled
     assert all(s["ticket_status"] == "on sale" for s in result["shows"])
     assert any("canceled" in n for n in result["notes"])
+
+
+def test_any_city_is_searched_live(snapshot_env, monkeypatch):
+    import live_events
+    from test_live_events import EVENTS
+
+    live_events._cache.clear()
+    monkeypatch.setattr(server, "_city_search", lambda city, country, days: EVENTS)
+    args = {"city": "Chicago", "country_code": "US"}
+    result = run(server.mcp.call_tool("upcoming_shows", args)).structured_content
+    assert [s["artist_name"] for s in result["shows"]] == ["CHXRRY", "Phoebe Bridgers", "Maple Kid"]
+    assert all(s["ticket_status"] == "on sale" for s in result["shows"])

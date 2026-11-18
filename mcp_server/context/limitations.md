@@ -9,7 +9,11 @@
 - **Ticketmaster coverage.** Many of the smallest venues sell through Dice, Eventbrite or their
   own sites, so an artist can have shows we don't see. Only ~12% of matched shows list a price,
   and a listed minimum of 0 may be a placeholder rather than a free show: check the ticket link.
-  Toronto and Montréal only.
+  Toronto and Montréal are collected daily, and their local performers are added to the
+  tracked pool. Any other city is searched live, and only artists already tracked can appear:
+  rising acts touring through, not that city's local scene. Ticketmaster itself covers North
+  America, the UK and Ireland, much of Europe, Australia and New Zealand, and has few listings
+  elsewhere (Berlin, for example, sells mostly through Eventim).
 - **Sold out can't be confirmed.** Ticketmaster's public API has no sold-out field (real
   availability is in a partner-only API). "off sale" during the sale window is the closest
   signal. Resale availability isn't covered.

@@ -1,0 +1,33 @@
+# Local only: the chat tab runs Claude Code on this machine, so don't expose it on the network.
+[server]
+address = "localhost"
+headless = true
+
+[client]
+toolbarMode = "viewer"  # no Deploy button
+
+[browser]
+gatherUsageStats = false
+
+# Gig-listings look: warm paper, ink text, one vermilion accent, square corners.
+[theme]
+base = "light"
+primaryColor = "#C8401E"
+backgroundColor = "#F4F0E8"
+secondaryBackgroundColor = "#EAE4D8"
+textColor = "#1C1B18"
+borderColor = "#D3CAB8"
+linkColor = "#C8401E"
+linkUnderline = false
+baseRadius = "2px"
+showWidgetBorder = true
+font = "IBM Plex Sans:https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+headingFont = "Archivo Narrow:https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@600;700&display=swap"
+codeFont = "IBM Plex Mono:https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap"
+headingFontWeights = 700
+
+[theme.sidebar]
+backgroundColor = "#1C1B18"
+secondaryBackgroundColor = "#2B2925"
+textColor = "#F4F0E8"
+borderColor = "#3A3833"

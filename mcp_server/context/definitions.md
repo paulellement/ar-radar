@@ -64,7 +64,9 @@ affinity × breakout score / 100 × novelty (see below).
 **Your library** = the tracked artists in your all-time top 500 (plus your recent top 50).
 Taste weights come from your top 50; your library decides "artists you listen to": they come
 first in `shows_for_me`, are never "discovered", and **your artists breaking** = library
-artists under 2M listeners with breakout ≥ 70.
+artists under 1M listeners with breakout ≥ 70 (1M+ counts as established, however fast it
+grows), ranked by breakout × smallness × (0.25 + 0.75 × familiarity). Smallness is a log
+scale: 10k listeners or fewer = 1, 100k = 0.5, 1M = 0.
 
 **Familiarity** is a dial, not a category: your plays on a log scale against your most-played
 artist (1 play ≈ 0.1, a favourite = 1). Nothing is split into "yours" vs "new". An artist you

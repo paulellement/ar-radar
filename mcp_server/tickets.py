@@ -17,12 +17,22 @@ import time
 
 import requests
 
+from anr_radar.secrets import get_secret
+
 log = logging.getLogger("ar-radar.tickets")
 
 EVENTS_URL = "https://app.ticketmaster.com/discovery/v2/events.json"
 CACHE_TTL_S = 10 * 60
 BATCH = 50
 _cache: dict[str, tuple[float, dict | None]] = {}
+
+
+def api_key() -> str | None:
+    """Ticketmaster key from .env or the secret scope; None means statuses come back unknown."""
+    try:
+        return get_secret("TICKETMASTER_API_KEY", "ticketmaster_key")
+    except RuntimeError:
+        return None
 
 
 def fetch_events(api_key: str, event_ids: list[str]) -> dict[str, dict]:
@@ -39,6 +49,13 @@ def fetch_events(api_key: str, event_ids: list[str]) -> dict[str, dict]:
         for e in r.json().get("_embedded", {}).get("events", []):
             found[e["id"]] = e
     return found
+
+
+def remember(events: list[dict]) -> None:
+    """Seed the status cache with full events fetched elsewhere (a live city search)."""
+    now = time.monotonic()
+    for e in events:
+        _cache[e["id"]] = (now, e)
 
 
 def _when(value: str | None) -> dt.datetime | None:
@@ -74,10 +91,11 @@ def classify(event: dict | None, now: dt.datetime) -> tuple[str, str | None]:
     return "unknown", None
 
 
-def annotate(result: dict, api_key: str | None, fetch=fetch_events, key: str = "shows") -> dict:
+def annotate(result: dict, api_key: str | None, fetch=None, key: str = "shows") -> dict:
     """Add ticket_status / ticket_note to result[key] (a list of shows with event_id), drop
     canceled shows, and say so in result["notes"]. Never raises: no key or no network just
     means status "unknown"."""
+    fetch = fetch or fetch_events  # looked up at call time, so tests can swap it
     shows = result.get(key) or []
     ids = list(dict.fromkeys(s["event_id"] for s in shows if s.get("event_id")))
     now = dt.datetime.now(dt.UTC)
